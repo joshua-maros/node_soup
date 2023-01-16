@@ -30,22 +30,35 @@ class MyApp extends StatelessWidget {
 }
 
 class Node extends StatelessWidget {
-  const Node({super.key});
+  final List<Key?> socketKeys;
+  const Node(this.socketKeys, {super.key});
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: NodePainter(context: context),
       child: ConstrainedBox(
-        constraints: BoxConstraints.tightFor(width: 128),
+        constraints: const BoxConstraints.tightFor(width: 128),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const NodeHeader('ADD'),
-            const NodeOutput('Output 1'),
-            const NodeOutput('Output 2'),
-            const NodeInput('Input 1'),
-            const NodeInput('Input 2'),
+            NodeOutput(
+              'Output 1',
+              key: socketKeys[0],
+            ),
+            NodeOutput(
+              'Output 2',
+              key: socketKeys[1],
+            ),
+            NodeInput(
+              'Input 1',
+              key: socketKeys[2],
+            ),
+            NodeInput(
+              'Input 2',
+              key: socketKeys[3],
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -197,9 +210,6 @@ class NodeOutputPainter extends CustomPainter {
     var e = const Radius.circular(8);
     final r = RRect.fromLTRBAndCorners(0, 0, size.width, size.height,
         bottomLeft: e, bottomRight: z, topLeft: e, topRight: z);
-    final p = Path();
-    p.addRRect(r);
-    canvas.drawShadow(p, Colors.black, 2, false);
     canvas.drawRRect(r, paint);
   }
 
@@ -210,22 +220,27 @@ class NodeOutputPainter extends CustomPainter {
 }
 
 class NodeWirePainter extends CustomPainter {
-  final GlobalKey node0, node1, node2;
+  final GlobalKey socket0, socket1, node2;
   final GlobalKey self;
 
-  const NodeWirePainter(this.self, this.node0, this.node1, this.node2);
+  const NodeWirePainter(this.self, this.socket0, this.socket1, this.node2);
 
   @override
   void paint(Canvas canvas, Size size) {
     final sp = (self.currentContext?.findRenderObject() as RenderBox)
         .localToGlobal(Offset.zero);
-    final n0p = (node0.currentContext?.findRenderObject() as RenderBox)
-        .localToGlobal(Offset.zero);
-    final n1p = (node1.currentContext?.findRenderObject() as RenderBox)
-        .localToGlobal(Offset.zero);
+    const padding = 8.0;
+    const paddingOffset = Offset(0, padding);
+    final s0 = socket0.currentContext?.findRenderObject() as RenderBox;
+    final s0p = s0.size.centerRight(s0.localToGlobal(Offset.zero)) + paddingOffset / 2;
+    final s1 = socket1.currentContext?.findRenderObject() as RenderBox;
+    final s1p = s1.size.centerLeft(s1.localToGlobal(Offset.zero)) + paddingOffset / 2;
     var paint = Paint();
-    paint.color = Colors.red;
-    canvas.drawLine(n0p - sp, n1p - sp, paint);
+    paint.color = Colors.blue;
+    paint.strokeWidth = 8;
+    canvas.drawLine(s0p - sp, s1p - sp, paint);
+    canvas.drawCircle(s0p - sp, (s0.size.height - padding) / 2, paint);
+    canvas.drawCircle(s1p - sp, (s1.size.height - padding) / 2, paint);
   }
 
   @override
@@ -236,9 +251,9 @@ class NodeWirePainter extends CustomPainter {
 
 class NodeGraph extends StatelessWidget {
   final GlobalKey graph = GlobalKey(),
-      node0 = GlobalKey(),
-      node1 = GlobalKey(),
-      node2 = GlobalKey();
+      socket0 = GlobalKey(),
+      socket1 = GlobalKey(),
+      socket2 = GlobalKey();
 
   NodeGraph({super.key});
 
@@ -246,16 +261,15 @@ class NodeGraph extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Positioned(
-          left: 100,
-          top: 100,
-          child: Node(key: node0),
-        ),
-        Node(key: node1),
-        Node(key: node2),
         CustomPaint(
           key: graph,
-          painter: NodeWirePainter(graph, node0, node1, node2),
+          painter: NodeWirePainter(graph, socket0, socket1, socket2),
+        ),
+        Node([null, socket0, null, null]),
+        Positioned(
+          left: 200,
+          top: 100,
+          child: Node([null, null, socket1, null]),
         ),
       ],
     );
