@@ -55,12 +55,12 @@ class VisualSocket {
 }
 
 class VisualNode {
-  final String label;
-  final Color color;
-  final List<VisualSocket> inputSockets, outputSockets;
-  final Offset position;
+  String label;
+  Color color;
+  List<VisualSocket> inputSockets, outputSockets;
+  Offset position;
 
-  const VisualNode(
+  VisualNode(
     this.position,
     this.label,
     this.inputSockets,
@@ -118,7 +118,7 @@ class NodeGraphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant NodeGraphPainter oldDelegate) {
-    return context != oldDelegate.context;
+    return true;
   }
 
   void paintWire(Canvas canvas, VisualWire wire) {
@@ -210,8 +210,11 @@ class NodeGraphPainter extends CustomPainter {
     drawText(
       canvas,
       socket.label,
-      const Rect.fromLTRB(
-          3 * nodeSocketPadding, 0, nodeWidth, nodeSocketHeight),
+      Rect.fromLTRB(
+          2 * nodeSocketPadding + max(nodeCornerRadius.x, nodeSocketPadding),
+          0,
+          nodeWidth,
+          nodeSocketHeight),
       alignment: Alignment.centerLeft,
     );
   }
@@ -233,17 +236,21 @@ class NodeGraphPainter extends CustomPainter {
   }
 }
 
-class NodeGraph extends StatelessWidget {
-  final GlobalKey graph = GlobalKey(),
-      socket0 = GlobalKey(),
-      socket1 = GlobalKey(),
-      socket2 = GlobalKey();
-
-  NodeGraph({super.key});
+class NodeGraph extends StatefulWidget {
+  const NodeGraph({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    const nodes = [
+  State<StatefulWidget> createState() {
+    return _NodeGraphState();
+  }
+}
+
+class _NodeGraphState extends State<NodeGraph> {
+  late List<VisualNode> nodes;
+  late List<VisualWire> wires;
+
+  _NodeGraphState() {
+    nodes = [
       VisualNode(
         Offset(0, 0),
         'ADD',
@@ -257,17 +264,20 @@ class NodeGraph extends StatelessWidget {
         [VisualSocket('result')],
       ),
     ];
-    final wires = [
+    wires = [
       VisualWire(nodes[0], 0, nodes[1], 0),
       VisualWire(nodes[0], 0, nodes[1], 1),
     ];
-    return Stack(
-      children: [
-        CustomPaint(
-          key: graph,
-          painter: NodeGraphPainter(context, nodes, wires),
-        ),
-      ],
+  }
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onPanUpdate: (update) => setState(() {
+          nodes[1].position += update.delta;
+      }),
+      child: CustomPaint(
+        painter: NodeGraphPainter(context, nodes, wires),
+      ),
     );
   }
 }
