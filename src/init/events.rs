@@ -1,9 +1,12 @@
+use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+use super::render_target::RenderTarget;
 
 pub struct EventHandler {
     control_flow: ControlFlow,
@@ -20,10 +23,33 @@ impl EventHandler {
         )
     }
 
-    pub fn handle_event(&mut self, event: Event<()>) -> ControlFlow {
+    pub fn handle_event(
+        &mut self,
+        event: Event<()>,
+        render_target: &mut RenderTarget,
+    ) -> ControlFlow {
         self.control_flow = ControlFlow::Poll;
         match event {
-            Event::WindowEvent { window_id, event } => self.handle_window_event(event),
+            Event::RedrawRequested(window_id) if window_id == render_target.window_id() => {
+                match render_target.render() {
+                    Ok(()) => (),
+                    Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
+                        render_target.refresh_surface()
+                    }
+                    Err(SurfaceError::OutOfMemory) => {
+                        self.control_flow = ControlFlow::ExitWithCode(1)
+                    }
+                    Err(e) => eprintln!("{:#?}", e),
+                }
+            }
+            Event::WindowEvent { window_id, event } if window_id == render_target.window_id() => {
+                if let WindowEvent::Resized(new_size) = event {
+                    render_target.resize_surface(new_size)
+                } else {
+                    self.handle_window_event(event)
+                }
+            }
+            Event::MainEventsCleared => render_target.request_redraw(),
             _ => (),
         }
         self.control_flow

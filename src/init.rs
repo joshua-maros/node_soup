@@ -6,7 +6,9 @@ pub mod render_target;
 pub async fn run() {
     env_logger::init();
     let (mut handler, event_loop) = EventHandler::create();
-    let render_target = RenderTarget::new(&event_loop).await;
+    let mut render_target = RenderTarget::new(&event_loop).await;
 
-    event_loop.run(move |event, _, control_flow| *control_flow = handler.handle_event(event));
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = handler.handle_event(event, &mut render_target)
+    });
 }
