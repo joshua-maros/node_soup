@@ -1,12 +1,13 @@
-use std::marker::PhantomData;
-
+use bytemuck::{Pod, Zeroable};
 use wgpu::{
-    Backends, BlendState, ColorTargetState, ColorWrites, CommandEncoderDescriptor, Device, Face,
-    FragmentState, FrontFace, Instance, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, Surface, SurfaceConfiguration,
-    SurfaceError, TextureViewDescriptor, VertexState,
+    util::{BufferInitDescriptor, DeviceExt},
+    Backends, BlendState, Buffer, BufferUsages, ColorTargetState, ColorWrites,
+    CommandEncoderDescriptor, Device, Face, FragmentState, FrontFace, Instance, LoadOp,
+    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, Surface,
+    SurfaceConfiguration, SurfaceError, TextureViewDescriptor, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexState, VertexStepMode,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -16,7 +17,39 @@ use winit::{
 
 use crate::constants::colors;
 
-use super::events::EventHandler;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    pub fn desc() -> VertexBufferLayout<'static> {
+        const ATTRS: [VertexAttribute; 2] =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as _,
+            step_mode: VertexStepMode::Vertex,
+            attributes: &ATTRS,
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 
 pub struct RenderTarget {
     surface: Surface,
@@ -26,6 +59,7 @@ pub struct RenderTarget {
     size: PhysicalSize<u32>,
     window: Window,
     render_pipeline: RenderPipeline,
+    vertex_buffer: Buffer,
 }
 
 impl RenderTarget {
@@ -87,7 +121,7 @@ impl RenderTarget {
             vertex: VertexState {
                 module: &shader,
                 entry_point: "vertex_shader",
-                buffers: &[],
+                buffers: &[Vertex::desc()],
             },
             fragment: Some(FragmentState {
                 module: &shader,
@@ -113,6 +147,13 @@ impl RenderTarget {
         };
         let render_pipeline = device.create_render_pipeline(&pipeline_desc);
 
+        let buffer_desc = BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&VERTICES),
+            usage: BufferUsages::VERTEX,
+        };
+        let vertex_buffer = device.create_buffer_init(&buffer_desc);
+
         Self {
             window,
             surface,
@@ -121,6 +162,7 @@ impl RenderTarget {
             config,
             size,
             render_pipeline,
+            vertex_buffer,
         }
     }
 
@@ -148,7 +190,8 @@ impl RenderTarget {
         };
         let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
         render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.draw(0..3, 0..1);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.draw(0..VERTICES.len() as _, 0..1);
         drop(render_pass);
         self.queue.submit([encoder.finish()]);
         target.present();
