@@ -20,14 +20,12 @@ use crate::constants::colors;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
+    position: [f32; 2],
 }
 
 impl Vertex {
     pub fn desc() -> VertexBufferLayout<'static> {
-        const ATTRS: [VertexAttribute; 2] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        const ATTRS: [VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x2];
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as _,
             step_mode: VertexStepMode::Vertex,
@@ -36,20 +34,61 @@ impl Vertex {
     }
 }
 
-const VERTICES: &[Vertex] = &[
+const RECT_VERTS: &[Vertex] = &[
     Vertex {
-        position: [0.0, 0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
+        position: [0.0, 0.0],
     },
     Vertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [0.0, 1.0, 0.0],
+        position: [1.0, 0.0],
     },
     Vertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
+        position: [0.0, 1.0],
+    },
+    Vertex {
+        position: [1.0, 0.0],
+    },
+    Vertex {
+        position: [1.0, 1.0],
+    },
+    Vertex {
+        position: [0.0, 1.0],
     },
 ];
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct RectInstance {
+    position: [f32; 2],
+    size: [f32; 2],
+    fill_color: [f32; 3],
+    border_color: [f32; 3],
+    corner_radius: f32,
+}
+
+impl RectInstance {
+    pub fn desc() -> VertexBufferLayout<'static> {
+        const ATTRS: [VertexAttribute; 5] = wgpu::vertex_attr_array![
+            1 => Float32x2,
+            2 => Float32x2,
+            3 => Float32x3,
+            4 => Float32x3,
+            5 => Float32
+        ];
+        VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as _,
+            step_mode: VertexStepMode::Instance,
+            attributes: &ATTRS,
+        }
+    }
+}
+
+const RECTS: &[RectInstance] = &[RectInstance {
+    position: [0.0, 0.0],
+    size: [0.5, 0.5],
+    fill_color: [0.5, 0.6, 0.7],
+    border_color: [1.0, 1.0, 1.0],
+    corner_radius: 0.1,
+}];
 
 pub struct RenderTarget {
     surface: Surface,
@@ -60,6 +99,7 @@ pub struct RenderTarget {
     window: Window,
     render_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
+    instance_buffer: Buffer,
 }
 
 impl RenderTarget {
@@ -121,7 +161,7 @@ impl RenderTarget {
             vertex: VertexState {
                 module: &shader,
                 entry_point: "vertex_shader",
-                buffers: &[Vertex::desc()],
+                buffers: &[Vertex::desc(), RectInstance::desc()],
             },
             fragment: Some(FragmentState {
                 module: &shader,
@@ -149,10 +189,17 @@ impl RenderTarget {
 
         let buffer_desc = BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&VERTICES),
+            contents: bytemuck::cast_slice(&RECT_VERTS),
             usage: BufferUsages::VERTEX,
         };
         let vertex_buffer = device.create_buffer_init(&buffer_desc);
+
+        let buffer_desc = BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&RECTS),
+            usage: BufferUsages::VERTEX,
+        };
+        let instance_buffer = device.create_buffer_init(&buffer_desc);
 
         Self {
             window,
@@ -163,6 +210,7 @@ impl RenderTarget {
             size,
             render_pipeline,
             vertex_buffer,
+            instance_buffer,
         }
     }
 
@@ -191,7 +239,8 @@ impl RenderTarget {
         let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.draw(0..VERTICES.len() as _, 0..1);
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+        render_pass.draw(0..RECT_VERTS.len() as _, 0..1);
         drop(render_pass);
         self.queue.submit([encoder.finish()]);
         target.present();
