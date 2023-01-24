@@ -1,13 +1,15 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    Backends, BlendState, Buffer, BufferUsages, ColorTargetState, ColorWrites,
-    CommandEncoderDescriptor, Device, Face, FragmentState, FrontFace, Instance, LoadOp,
-    MultisampleState, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, Surface,
-    SurfaceConfiguration, SurfaceError, TextureViewDescriptor, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState, VertexStepMode,
+    Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, BlendState, Buffer, BufferBindingType, BufferUsages,
+    ColorTargetState, ColorWrites, CommandEncoderDescriptor, Device, Face, FragmentState,
+    FrontFace, Instance, LoadOp, MultisampleState, Operations, PipelineLayoutDescriptor,
+    PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, RequestAdapterOptions,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, Surface, SurfaceConfiguration,
+    SurfaceError, TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexState, VertexStepMode,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -15,7 +17,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::constants::colors;
+use crate::constants::colors::{self, NODE_FILL, NODE_OUTLINE};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -82,13 +84,45 @@ impl RectInstance {
     }
 }
 
-const RECTS: &[RectInstance] = &[RectInstance {
-    position: [0.0, 0.0],
-    size: [0.5, 0.5],
-    fill_color: [0.5, 0.6, 0.7],
-    border_color: [1.0, 1.0, 1.0],
-    corner_radius: 0.1,
+const RECTS1: &[RectInstance] = &[
+    RectInstance {
+        position: [300.0, 100.0],
+        size: [128.0, 128.0],
+        fill_color: NODE_FILL,
+        border_color: NODE_OUTLINE,
+        corner_radius: 8.0,
+    },
+    RectInstance {
+        position: [300.0 - 128.0 + 4.0, 100.0 - 24.0 - 4.0],
+        size: [128.0 - 8.0, 128.0],
+        fill_color: NODE_FILL,
+        border_color: NODE_OUTLINE,
+        corner_radius: 8.0,
+    },
+];
+
+const RECTS2: &[RectInstance] = &[RectInstance {
+    position: [300.0 - 128.0, 100.0 + 128.0 - 32.0],
+    size: [128.0, 32.0],
+    fill_color: NODE_FILL,
+    border_color: NODE_OUTLINE,
+    corner_radius: 8.0,
 }];
+
+const RECTS3: &[RectInstance] = &[RectInstance {
+    position: [300.0, 100.0],
+    size: [128.0, 128.0],
+    fill_color: NODE_FILL,
+    border_color: NODE_OUTLINE,
+    corner_radius: 8.0,
+}];
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct ScreenUniformData {
+    width: f32,
+    height: f32,
+}
 
 pub struct RenderTarget {
     surface: Surface,
@@ -97,9 +131,15 @@ pub struct RenderTarget {
     config: SurfaceConfiguration,
     size: PhysicalSize<u32>,
     window: Window,
-    render_pipeline: RenderPipeline,
+    shape1_pipeline: RenderPipeline,
+    shape2_pipeline: RenderPipeline,
+    shape3_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
-    instance_buffer: Buffer,
+    instance_buffer_1: Buffer,
+    instance_buffer_2: Buffer,
+    instance_buffer_3: Buffer,
+    screen_uniform_buffer: Buffer,
+    screen_bind_group: BindGroup,
 }
 
 impl RenderTarget {
@@ -139,23 +179,57 @@ impl RenderTarget {
         };
         surface.configure(&device, &config);
 
+        let buffer_desc = BufferInitDescriptor {
+            label: Some("Screen Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[ScreenUniformData {
+                width: 1280.0,
+                height: 720.0,
+            }]),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        };
+        let screen_uniform_buffer = device.create_buffer_init(&buffer_desc);
+
+        let layout_desc = BindGroupLayoutDescriptor {
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("Screen Bind Group Layout"),
+        };
+        let screen_bind_group_layout = device.create_bind_group_layout(&layout_desc);
+        let bind_group_desc = BindGroupDescriptor {
+            layout: &screen_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: screen_uniform_buffer.as_entire_binding(),
+            }],
+            label: Some("Screen Bind Group"),
+        };
+        let screen_bind_group = device.create_bind_group(&bind_group_desc);
+
         let shader_desc = ShaderModuleDescriptor {
             label: Some("Basic Shader"),
-            source: ShaderSource::Wgsl(include_str!("../shaders/shader.wgsl").into()),
+            source: ShaderSource::Wgsl(include_str!("../shaders/shapes.wgsl").into()),
         };
         let shader = device.create_shader_module(shader_desc);
         let layout_desc = PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&screen_bind_group_layout],
             push_constant_ranges: &[],
         };
         let render_pipeline_layout = device.create_pipeline_layout(&layout_desc);
         let targets = [Some(ColorTargetState {
             format: config.format,
-            blend: Some(BlendState::REPLACE),
+            blend: Some(BlendState::ALPHA_BLENDING),
             write_mask: ColorWrites::ALL,
         })];
-        let pipeline_desc = RenderPipelineDescriptor {
+        let mut pipeline_desc = RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: VertexState {
@@ -185,7 +259,11 @@ impl RenderTarget {
             },
             multiview: None,
         };
-        let render_pipeline = device.create_render_pipeline(&pipeline_desc);
+        let shape1_pipeline = device.create_render_pipeline(&pipeline_desc);
+        pipeline_desc.fragment.as_mut().unwrap().entry_point = "fragment_shader_2";
+        let shape2_pipeline = device.create_render_pipeline(&pipeline_desc);
+        pipeline_desc.fragment.as_mut().unwrap().entry_point = "fragment_shader_3";
+        let shape3_pipeline = device.create_render_pipeline(&pipeline_desc);
 
         let buffer_desc = BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -196,10 +274,24 @@ impl RenderTarget {
 
         let buffer_desc = BufferInitDescriptor {
             label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&RECTS),
+            contents: bytemuck::cast_slice(&RECTS1),
             usage: BufferUsages::VERTEX,
         };
-        let instance_buffer = device.create_buffer_init(&buffer_desc);
+        let instance_buffer_1 = device.create_buffer_init(&buffer_desc);
+
+        let buffer_desc = BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&RECTS2),
+            usage: BufferUsages::VERTEX,
+        };
+        let instance_buffer_2 = device.create_buffer_init(&buffer_desc);
+
+        let buffer_desc = BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&RECTS3),
+            usage: BufferUsages::VERTEX,
+        };
+        let instance_buffer_3 = device.create_buffer_init(&buffer_desc);
 
         Self {
             window,
@@ -208,9 +300,15 @@ impl RenderTarget {
             queue,
             config,
             size,
-            render_pipeline,
+            shape1_pipeline,
+            shape2_pipeline,
+            shape3_pipeline,
             vertex_buffer,
-            instance_buffer,
+            instance_buffer_1,
+            instance_buffer_2,
+            instance_buffer_3,
+            screen_uniform_buffer,
+            screen_bind_group,
         }
     }
 
@@ -237,10 +335,20 @@ impl RenderTarget {
             depth_stencil_attachment: None,
         };
         let mut render_pass = encoder.begin_render_pass(&render_pass_desc);
-        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_pipeline(&self.shape1_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        render_pass.draw(0..RECT_VERTS.len() as _, 0..1);
+        render_pass.set_vertex_buffer(1, self.instance_buffer_1.slice(..));
+        render_pass.set_bind_group(0, &self.screen_bind_group, &[]);
+        render_pass.draw(0..RECT_VERTS.len() as _, 0..RECTS1.len() as _);
+
+        render_pass.set_pipeline(&self.shape2_pipeline);
+        render_pass.set_vertex_buffer(1, self.instance_buffer_2.slice(..));
+        render_pass.draw(0..RECT_VERTS.len() as _, 0..RECTS2.len() as _);
+
+        render_pass.set_pipeline(&self.shape3_pipeline);
+        render_pass.set_vertex_buffer(1, self.instance_buffer_3.slice(..));
+        render_pass.draw(0..RECT_VERTS.len() as _, 0..RECTS3.len() as _);
+
         drop(render_pass);
         self.queue.submit([encoder.finish()]);
         target.present();
