@@ -2,7 +2,7 @@ pub fn pretty_format_number(number: f32) -> String {
     if !number.is_finite() {
         format!("{}", number)
     } else if number == 0.0 {
-        format!("0.00")
+        format!("0.000")
     } else {
         let mut number = number;
         let mut power = 0;
@@ -26,6 +26,6 @@ pub fn pretty_format_number(number: f32) -> String {
             -4 => "p",
             _ => "?",
         };
-        format!("{}{}", &format!("{:0.3}", number)[..4], suffix)
+        format!("{}{}", &format!("{:0.4}", number)[..5], suffix)
     }
 }

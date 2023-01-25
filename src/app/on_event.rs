@@ -58,22 +58,4 @@ impl App {
             _ => (),
         }
     }
-
-    fn render(&mut self) {
-        let visual = self.computation_engine.root_node().visual();
-        let size = visual.size();
-        let pos = Position {
-            x: self.result_drawer_size,
-            y: self.render_engine.target_size().height - size.height,
-        };
-        let result = self.render_engine.render(&visual.draw(pos, "Root"));
-        match result {
-            Ok(()) => (),
-            Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
-                self.render_engine.refresh_target()
-            }
-            Err(SurfaceError::OutOfMemory) => self.control_flow = ControlFlow::ExitWithCode(1),
-            Err(e) => eprintln!("{:#?}", e),
-        }
-    }
 }
