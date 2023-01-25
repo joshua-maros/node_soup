@@ -7,7 +7,7 @@ struct RectInstance {
     @location(2) size: vec2<f32>,
     @location(3) fill_color: vec3<f32>,
     @location(4) outline_color: vec3<f32>,
-    @location(5) corner_radius: f32,
+    @location(5) border_modes: u32,
 };
 
 struct Screen {
@@ -18,11 +18,11 @@ struct Screen {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) position: vec2<f32>,
-    @location(1) fill_color: vec3<f32>,
-    @location(2) outline_color: vec3<f32>,
-    @location(3) corner_radius: f32,
-    @location(4) bottom_left_corner_center: vec2<f32>,
-    @location(5) top_right_corner_center: vec2<f32>,
+    @location(1) start: vec2<f32>,
+    @location(2) end: vec2<f32>,
+    @location(3) fill_color: vec3<f32>,
+    @location(4) outline_color: vec3<f32>,
+    @location(5) border_modes: u32,
 };
 
 @group(0) @binding(0)
@@ -34,78 +34,74 @@ fn vertex_shader(vert: VertexInput, rect: RectInstance) -> VertexOutput {
 
     out.fill_color = rect.fill_color;
     out.outline_color = rect.outline_color;
-    out.corner_radius = rect.corner_radius;
+    out.border_modes = rect.border_modes;
 
     out.position = vert.position * rect.size + rect.position;
     let x = out.position.x / screen.width * 2.0 - 1.0;
     let y = out.position.y / screen.height * 2.0 - 1.0;
     out.clip_position = vec4<f32>(x, y, 0.0, 1.0);
 
-    out.bottom_left_corner_center = rect.position + rect.corner_radius;
-    out.top_right_corner_center = rect.position + rect.size - rect.corner_radius;
+    out.start = rect.position;
+    out.end = rect.position + rect.size;
 
     return out;
 }
 
 @fragment
 fn fragment_shader(in: VertexOutput) -> @location(0) vec4<f32> {
-    let start = in.bottom_left_corner_center - in.corner_radius;
-    let end = in.top_right_corner_center + in.corner_radius;
     let x = in.position.x;
     let y = in.position.y;
+
+    let left_border_mode = (in.border_modes >> 4u) & 0x1u;
+    let right_border_mode = (in.border_modes >> 5u) & 0x1u;
+    let bottom_border_mode = (in.border_modes >> 2u) & 0x3u;
+    let top_border_mode = in.border_modes & 0x3u;
+
+    var bottom = in.start.y;
+    var top = in.end.y;
+
+    if bottom_border_mode == 2u {
+        // Diagonal mode.
+        bottom += x - in.start.x;
+    } else if bottom_border_mode == 3u {
+        // Antidiagonal mode.
+        bottom += in.end.x - x - 1.0;
+    }
+
+    if top_border_mode == 2u {
+        // Diagonal mode.
+        top -= in.end.x - x;
+    } else if top_border_mode == 3u {
+        // Antidiagonal mode.
+        top -= x - in.start.x;
+    }
+
     let thickness = 1.0;
-    if y >= in.bottom_left_corner_center.y && y <= in.top_right_corner_center.y {
-        if x <= start.x + thickness || x >= end.x - thickness {
+
+    if y >= bottom && y <= top {
+        if (left_border_mode == 1u && x <= in.start.x + thickness)
+            || (right_border_mode == 1u && x >= in.end.x - thickness)
+            || (bottom_border_mode > 0u && y <= bottom + thickness)
+            || (top_border_mode > 0u && y >= top - thickness) {
             return vec4<f32>(in.outline_color, 1.0);
-        }
-        return vec4<f32>(in.fill_color, 1.0);
-    } else if x >= in.bottom_left_corner_center.x && x <= in.top_right_corner_center.x {
-        if y <= start.y + thickness || y >= end.y - thickness {
-            return vec4<f32>(in.outline_color, 1.0);
-        }
-        return vec4<f32>(in.fill_color, 1.0);
-    } else {
-        let dx = select(in.bottom_left_corner_center.x - x, x - in.top_right_corner_center.x, x > in.bottom_left_corner_center.x);
-        let dy = select(in.bottom_left_corner_center.y - y, y - in.top_right_corner_center.y, y > in.bottom_left_corner_center.y);
-        let d = abs(dx) + abs(dy);
-        if d <= in.corner_radius {
-            if d >= in.corner_radius - thickness {
-                return vec4<f32>(in.outline_color, 1.0);
-            }
+        } else {
             return vec4<f32>(in.fill_color, 1.0);
         }
+    } else {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
-    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
 
 @fragment
 fn fragment_shader_2(in: VertexOutput) -> @location(0) vec4<f32> {
-    let x = in.position.x;
-    let y = in.position.y;
-    var dy: f32;
-    if x < in.bottom_left_corner_center.x {
-        dy = x - in.bottom_left_corner_center.x + in.corner_radius;
-    } else if x > in.top_right_corner_center.x {
-        dy = in.top_right_corner_center.x + in.corner_radius - x;
-    } else {
-        dy = in.corner_radius;
-    }
-    let top = in.top_right_corner_center.y + dy;
-    let bottom = in.bottom_left_corner_center.y - in.corner_radius + dy;
-    let thickness = 1.0;
-    if y >= bottom && y <= top {
-        if y <= bottom + thickness || y >= top - thickness 
-            || x <= in.bottom_left_corner_center.x - in.corner_radius + thickness
-            || x >= in.top_right_corner_center.x + in.corner_radius - thickness
-        {
-            return vec4<f32>(in.outline_color, 1.0);
-        }
-        return vec4<f32>(in.fill_color, 1.0);
-    }
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
 
 @fragment
 fn fragment_shader_3(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    if (in.position.x % 2.0 < 1.0) == (in.position.y % 2.0 < 1.0) {
+        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    } else {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
 }

@@ -17,7 +17,10 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::constants::colors::{self, NODE_FILL, NODE_OUTLINE};
+use crate::constants::colors::{
+    self, NODE_BODY_WIDTH, NODE_CORNER_SIZE, NODE_FILL, NODE_HEADER_HEIGHT, NODE_MIN_HEIGHT,
+    NODE_OUTLINE, NODE_PADDING,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -63,9 +66,27 @@ pub struct RectInstance {
     position: [f32; 2],
     size: [f32; 2],
     fill_color: [f32; 3],
-    border_color: [f32; 3],
-    corner_radius: f32,
+    outline_color: [f32; 3],
+    outline_modes: u32,
 }
+
+const OUTLINE_MODE_NONE: u32 = 0;
+const OUTLINE_MODE_FLAT: u32 = 1;
+const OUTLINE_MODE_DIAGONAL: u32 = 2;
+const OUTLINE_MODE_ANTIDIAGONAL: u32 = 3;
+
+const TOP_OUTLINE_NONE: u32 = OUTLINE_MODE_NONE << 0;
+const TOP_OUTLINE_FLAT: u32 = OUTLINE_MODE_FLAT << 0;
+const TOP_OUTLINE_DIAGONAL: u32 = OUTLINE_MODE_DIAGONAL << 0;
+const TOP_OUTLINE_ANTIDIAGONAL: u32 = OUTLINE_MODE_ANTIDIAGONAL << 0;
+const BOTTOM_OUTLINE_NONE: u32 = OUTLINE_MODE_NONE << 2;
+const BOTTOM_OUTLINE_FLAT: u32 = OUTLINE_MODE_FLAT << 2;
+const BOTTOM_OUTLINE_DIAGONAL: u32 = OUTLINE_MODE_DIAGONAL << 2;
+const BOTTOM_OUTLINE_ANTIDIAGONAL: u32 = OUTLINE_MODE_ANTIDIAGONAL << 2;
+const LEFT_OUTLINE_NONE: u32 = OUTLINE_MODE_NONE << 4;
+const LEFT_OUTLINE_FLAT: u32 = OUTLINE_MODE_FLAT << 4;
+const RIGHT_OUTLINE_NONE: u32 = OUTLINE_MODE_NONE << 5;
+const RIGHT_OUTLINE_FLAT: u32 = OUTLINE_MODE_FLAT << 5;
 
 impl RectInstance {
     pub fn desc() -> VertexBufferLayout<'static> {
@@ -74,7 +95,7 @@ impl RectInstance {
             2 => Float32x2,
             3 => Float32x3,
             4 => Float32x3,
-            5 => Float32
+            5 => Uint32,
         ];
         VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as _,
@@ -84,38 +105,143 @@ impl RectInstance {
     }
 }
 
-const RECTS1: &[RectInstance] = &[
-    RectInstance {
-        position: [300.0, 100.0],
-        size: [128.0, 128.0],
-        fill_color: NODE_FILL,
-        border_color: NODE_OUTLINE,
-        corner_radius: 8.0,
-    },
-    RectInstance {
-        position: [300.0 - 128.0 + 4.0, 100.0 - 24.0 - 4.0],
-        size: [128.0 - 8.0, 128.0],
-        fill_color: NODE_FILL,
-        border_color: NODE_OUTLINE,
-        corner_radius: 8.0,
-    },
-];
+struct Node {
+    sockets: Vec<Option<Node>>,
+}
 
-const RECTS2: &[RectInstance] = &[RectInstance {
-    position: [300.0 - 128.0, 100.0 + 128.0 - 32.0],
-    size: [128.0, 32.0],
-    fill_color: NODE_FILL,
-    border_color: NODE_OUTLINE,
-    corner_radius: 8.0,
-}];
+impl Node {
+    // x and y are top-left corner.
+    pub fn draw(&self, x: f32, y: f32) -> (Vec<RectInstance>, f32, f32) {
+        if self.sockets.len() == 0 {
+            let height = NODE_MIN_HEIGHT;
+            let shapes = vec![
+                RectInstance {
+                    position: [x, y - height],
+                    size: [NODE_CORNER_SIZE, height],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: LEFT_OUTLINE_FLAT
+                        | TOP_OUTLINE_DIAGONAL
+                        | BOTTOM_OUTLINE_ANTIDIAGONAL,
+                },
+                RectInstance {
+                    position: [x + NODE_CORNER_SIZE, y - height],
+                    size: [NODE_BODY_WIDTH - NODE_CORNER_SIZE * 2.0, height],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+                },
+                RectInstance {
+                    position: [x + NODE_BODY_WIDTH - NODE_CORNER_SIZE, y - height],
+                    size: [NODE_CORNER_SIZE, height],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: RIGHT_OUTLINE_FLAT
+                        | TOP_OUTLINE_ANTIDIAGONAL
+                        | BOTTOM_OUTLINE_DIAGONAL,
+                },
+            ];
+            (shapes, NODE_BODY_WIDTH, height)
+        } else {
+            let mut height = NODE_MIN_HEIGHT;
+            let original_x = x;
+            let mut x = x;
+            let mut shapes = vec![];
+            for (index, socket) in self.sockets.iter().enumerate() {
+                let first = index == 0;
+                let width = if let Some(child) = socket {
+                    let (mut child_shapes, child_width, child_height) = child.draw(
+                        x + 0.5 * NODE_PADDING,
+                        y - NODE_HEADER_HEIGHT - NODE_PADDING,
+                    );
+                    shapes.append(&mut child_shapes);
+                    height = height.max(child_height + NODE_HEADER_HEIGHT + NODE_PADDING);
+                    child_width + NODE_PADDING
+                } else {
+                    NODE_PADDING + NODE_BODY_WIDTH
+                };
+                let last = index == self.sockets.len() - 1;
+                let width = if last {
+                    width + 0.5 * NODE_PADDING
+                } else {
+                    width
+                };
+                shapes.push(RectInstance {
+                    position: [x, y - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE],
+                    size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: if first {
+                        LEFT_OUTLINE_FLAT | TOP_OUTLINE_DIAGONAL | BOTTOM_OUTLINE_DIAGONAL
+                    } else {
+                        TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_DIAGONAL
+                    },
+                });
+                shapes.push(RectInstance {
+                    position: [x + NODE_CORNER_SIZE, y - NODE_HEADER_HEIGHT],
+                    size: [width - 2.0 * NODE_CORNER_SIZE, NODE_HEADER_HEIGHT],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+                });
+                shapes.push(RectInstance {
+                    position: [
+                        x + width - NODE_CORNER_SIZE,
+                        y - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE,
+                    ],
+                    size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                    fill_color: NODE_FILL,
+                    outline_color: NODE_OUTLINE,
+                    outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
+                });
+                x += width;
+            }
+            shapes.push(RectInstance {
+                position: [x, y - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE],
+                size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: TOP_OUTLINE_FLAT,
+            });
+            shapes.push(RectInstance {
+                position: [x, y - height],
+                size: [
+                    NODE_CORNER_SIZE,
+                    height - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE,
+                ],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
+            });
+            shapes.push(RectInstance {
+                position: [x + NODE_CORNER_SIZE, y - height],
+                size: [NODE_BODY_WIDTH - 2.0 * NODE_CORNER_SIZE, height],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+            });
+            shapes.push(RectInstance {
+                position: [x + NODE_BODY_WIDTH - NODE_CORNER_SIZE, y - height],
+                size: [NODE_CORNER_SIZE, height],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: RIGHT_OUTLINE_FLAT
+                    | TOP_OUTLINE_ANTIDIAGONAL
+                    | BOTTOM_OUTLINE_DIAGONAL,
+            });
+            (shapes, x - original_x + NODE_BODY_WIDTH, height)
+        }
+    }
+}
 
-const RECTS3: &[RectInstance] = &[RectInstance {
-    position: [300.0, 100.0],
-    size: [128.0, 128.0],
-    fill_color: NODE_FILL,
-    border_color: NODE_OUTLINE,
-    corner_radius: 8.0,
-}];
+const RECTS3: &[RectInstance] = &[];
+// const RECTS3: &[RectInstance] = &[RectInstance {
+//     position: [0.0, 0.0],
+//     size: [1280.0, 720.0],
+//     fill_color: NODE_FILL,
+//     outline_color: NODE_OUTLINE,
+//     outline_modes: 0,
+// }];
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -132,11 +258,10 @@ pub struct RenderTarget {
     size: PhysicalSize<u32>,
     window: Window,
     shape1_pipeline: RenderPipeline,
-    shape2_pipeline: RenderPipeline,
     shape3_pipeline: RenderPipeline,
     vertex_buffer: Buffer,
     instance_buffer_1: Buffer,
-    instance_buffer_2: Buffer,
+    instance_buffer_1_len: u32,
     instance_buffer_3: Buffer,
     screen_uniform_buffer: Buffer,
     screen_bind_group: BindGroup,
@@ -260,8 +385,6 @@ impl RenderTarget {
             multiview: None,
         };
         let shape1_pipeline = device.create_render_pipeline(&pipeline_desc);
-        pipeline_desc.fragment.as_mut().unwrap().entry_point = "fragment_shader_2";
-        let shape2_pipeline = device.create_render_pipeline(&pipeline_desc);
         pipeline_desc.fragment.as_mut().unwrap().entry_point = "fragment_shader_3";
         let shape3_pipeline = device.create_render_pipeline(&pipeline_desc);
 
@@ -272,19 +395,23 @@ impl RenderTarget {
         };
         let vertex_buffer = device.create_buffer_init(&buffer_desc);
 
+        let node = Node {
+            sockets: vec![
+                Some(Node {
+                    sockets: vec![None],
+                }),
+                Some(Node { sockets: vec![] }),
+            ],
+        };
+
+        let contents = node.draw(100.0, 500.0).0;
+        let instance_buffer_1_len = contents.len() as _;
         let buffer_desc = BufferInitDescriptor {
             label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&RECTS1),
+            contents: bytemuck::cast_slice(&contents),
             usage: BufferUsages::VERTEX,
         };
         let instance_buffer_1 = device.create_buffer_init(&buffer_desc);
-
-        let buffer_desc = BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&RECTS2),
-            usage: BufferUsages::VERTEX,
-        };
-        let instance_buffer_2 = device.create_buffer_init(&buffer_desc);
 
         let buffer_desc = BufferInitDescriptor {
             label: Some("Instance Buffer"),
@@ -301,11 +428,10 @@ impl RenderTarget {
             config,
             size,
             shape1_pipeline,
-            shape2_pipeline,
             shape3_pipeline,
             vertex_buffer,
             instance_buffer_1,
-            instance_buffer_2,
+            instance_buffer_1_len,
             instance_buffer_3,
             screen_uniform_buffer,
             screen_bind_group,
@@ -339,11 +465,7 @@ impl RenderTarget {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, self.instance_buffer_1.slice(..));
         render_pass.set_bind_group(0, &self.screen_bind_group, &[]);
-        render_pass.draw(0..RECT_VERTS.len() as _, 0..RECTS1.len() as _);
-
-        render_pass.set_pipeline(&self.shape2_pipeline);
-        render_pass.set_vertex_buffer(1, self.instance_buffer_2.slice(..));
-        render_pass.draw(0..RECT_VERTS.len() as _, 0..RECTS2.len() as _);
+        render_pass.draw(0..RECT_VERTS.len() as _, 0..self.instance_buffer_1_len);
 
         render_pass.set_pipeline(&self.shape3_pipeline);
         render_pass.set_vertex_buffer(1, self.instance_buffer_3.slice(..));
