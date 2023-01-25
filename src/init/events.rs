@@ -6,7 +6,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use super::render_target::RenderTarget;
+use super::render_target::{RenderTarget, VisualNode};
 
 pub struct EventHandler {
     control_flow: ControlFlow,
@@ -27,11 +27,12 @@ impl EventHandler {
         &mut self,
         event: Event<()>,
         render_target: &mut RenderTarget,
+        render_object: &VisualNode,
     ) -> ControlFlow {
         self.control_flow = ControlFlow::Poll;
         match event {
             Event::RedrawRequested(window_id) if window_id == render_target.window_id() => {
-                match render_target.render() {
+                match render_target.render(render_object) {
                     Ok(()) => (),
                     Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
                         render_target.refresh_surface()
