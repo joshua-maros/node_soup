@@ -1,10 +1,9 @@
 use wgpu::{
     BindGroupLayout, BlendState, ColorTargetState, ColorWrites, Face, FragmentState, FrontFace,
     MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPipeline, RenderPipelineDescriptor, ShaderModel, ShaderModule, ShaderModuleDescriptor,
-    ShaderSource, VertexBufferLayout, VertexState,
+    RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource,
+    VertexBufferLayout, VertexState,
 };
-use winit::window::Window;
 
 use super::{render_device::RenderDevice, render_target::RenderTarget};
 

@@ -1,6 +1,6 @@
 use wgpu::{
-    Backends, Device, DeviceDescriptor, Features, Instance, Limits, Queue, RequestAdapterOptions,
-    Surface, TextureFormat,
+    Device, DeviceDescriptor, Features, Instance, Limits, Queue, RequestAdapterOptions, Surface,
+    TextureFormat,
 };
 
 pub struct RenderDevice {
@@ -25,7 +25,10 @@ impl RenderDevice {
             label: Some("UI Device"),
         };
         let (device, queue) = adapter.request_device(&device_desc, None).await.unwrap();
-        (Self { device, queue }, surface.get_supported_formats(&adapter)[0])
+        (
+            Self { device, queue },
+            surface.get_supported_formats(&adapter)[0],
+        )
     }
 
     pub fn device(&self) -> &Device {

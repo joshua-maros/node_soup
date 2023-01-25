@@ -1,13 +1,10 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType,
-    BufferUsages, Instance, ShaderStages, Surface, SurfaceConfiguration, TextureFormat,
+    Backends, BindGroup, BindGroupLayout, Instance, Surface, SurfaceConfiguration, TextureFormat,
 };
-use winit::{dpi::PhysicalSize, platform::unix::x11::util::Geometry, window::Window};
+use winit::{dpi::PhysicalSize, window::Window};
 
-use super::{render_device::RenderDevice, uniform_buffer::UniformBuffer, size::Size};
+use super::{render_device::RenderDevice, size::Size, uniform_buffer::UniformBuffer};
 
 pub struct RenderTarget {
     surface: Surface,

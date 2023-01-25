@@ -1,11 +1,7 @@
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    BindGroupLayout, BlendState, Buffer, BufferUsages, ColorTargetState, ColorWrites,
-    CommandEncoderDescriptor, Face, FragmentState, FrontFace, LoadOp, MultisampleState, Operations,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModel, ShaderModule, ShaderModuleDescriptor, ShaderSource, SurfaceError,
-    TextureViewDescriptor, VertexBufferLayout, VertexState,
+    Buffer, BufferUsages, CommandEncoderDescriptor, LoadOp, Operations, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, SurfaceError, TextureViewDescriptor,
 };
 use winit::window::Window;
 

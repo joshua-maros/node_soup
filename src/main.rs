@@ -53,7 +53,10 @@ impl App {
             ],
         };
         match event {
-            Event::RedrawRequested(window_id) => match self.render_engine.render_shapes(&node.draw(0.0, 0.0)) {
+            Event::RedrawRequested(_window_id) => match self
+                .render_engine
+                .render_shapes(&node.draw(0.0, 0.0))
+            {
                 Ok(()) => (),
                 Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
                     self.render_engine.refresh_target()
@@ -61,7 +64,10 @@ impl App {
                 Err(SurfaceError::OutOfMemory) => self.control_flow = ControlFlow::ExitWithCode(1),
                 Err(e) => eprintln!("{:#?}", e),
             },
-            Event::WindowEvent { window_id, event } => {
+            Event::WindowEvent {
+                window_id: _,
+                event,
+            } => {
                 if let WindowEvent::Resized(new_size) = event {
                     self.render_engine.resize_target(new_size.into())
                 } else {

@@ -1,6 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use wgpu::{VertexBufferLayout, VertexAttribute, VertexStepMode};
-
+use wgpu::{VertexAttribute, VertexBufferLayout, VertexStepMode};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
