@@ -1,14 +1,15 @@
+use itertools::Itertools;
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt, StagingBelt},
     Buffer, BufferUsages, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations, RenderPass,
     RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture, TextureView,
     TextureViewDescriptor,
 };
-use wgpu_glyph::{HorizontalAlign, Layout, Section, Text, VerticalAlign};
+use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
 
 use super::{ActiveRenderInfo, MutableResources, ReadOnlyResources};
 use crate::{
-    renderer::{fonts::Fonts, shapes::Shapes},
+    renderer::{fonts::Fonts, shapes::Shapes, Text},
     theme::{self},
 };
 
@@ -17,20 +18,10 @@ pub(super) fn render_text(
     mr: &mut MutableResources,
     info: &mut ActiveRenderInfo,
 ) {
-    let sections = info.shapes.text.iter().map(|text| Section {
-        text: vec![Text::new(&text.text)
-            .with_color(text.color)
-            .with_scale(text.size)],
-        screen_position: (
-            text.position[0],
-            ror.target.size().height - text.position[1],
-        ),
-        bounds: (text.bounds[0], text.bounds[1]),
-        layout: Layout::default_single_line()
-            .h_align(HorizontalAlign::Center)
-            .v_align(VerticalAlign::Center),
-    });
-    for section in sections {
+    let screen_height = ror.target.size().height;
+    let texts = info.shapes.texts.iter();
+    let wgpu_sections = texts.map(|text| text.as_wgpu_section(screen_height));
+    for section in wgpu_sections {
         mr.fonts.regular.queue(section);
     }
     mr.fonts

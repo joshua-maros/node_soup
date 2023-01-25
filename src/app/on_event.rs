@@ -13,17 +13,34 @@ use crate::{
 impl App {
     pub(super) fn on_event(&mut self, event: Event<()>) {
         let node = Node {
+            name: format!("Sum"),
             sockets: vec![
-                Socket::new(Node {
-                    sockets: vec![Socket::new(Node { sockets: vec![] })],
-                }),
-                Socket::new(Node { sockets: vec![] }),
+                Socket::new(
+                    Node {
+                        name: format!("Something"),
+                        sockets: vec![Socket::new(
+                            Node {
+                                name: format!("0.0"),
+                                sockets: vec![],
+                            },
+                            format!("Input"),
+                        )],
+                    },
+                    format!("B"),
+                ),
+                Socket::new(
+                    Node {
+                        name: format!("1.3"),
+                        sockets: vec![],
+                    },
+                    format!("A"),
+                ),
             ],
         };
         match event {
             Event::RedrawRequested(_window_id) => match self
                 .render_engine
-                .render(&node.draw(Position { x: 0.0, y: 0.0 }))
+                .render(&node.draw(Position { x: 0.0, y: 0.0 }, "Root"))
             {
                 Ok(()) => (),
                 Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {

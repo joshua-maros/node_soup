@@ -5,14 +5,14 @@ use super::{Position, RectInstance, Size, Text};
 #[derive(Clone, Debug)]
 pub struct Shapes {
     pub rects: Vec<RectInstance>,
-    pub text: Vec<Text>,
+    pub texts: Vec<Text>,
 }
 
 impl Shapes {
     pub fn new() -> Self {
         Self {
             rects: vec![],
-            text: vec![],
+            texts: vec![],
         }
     }
 
@@ -21,11 +21,11 @@ impl Shapes {
     }
 
     pub fn push_text(&mut self, text: Text) {
-        self.text.push(text)
+        self.texts.push(text)
     }
 
     pub fn append(&mut self, other: Self) {
         self.rects.append(&mut { other.rects });
-        self.text.append(&mut { other.text });
+        self.texts.append(&mut { other.texts });
     }
 }
