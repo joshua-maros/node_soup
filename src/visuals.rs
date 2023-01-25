@@ -5,7 +5,7 @@ use crate::{
         TOP_OUTLINE_DIAGONAL, TOP_OUTLINE_FLAT,
     },
     theme::{
-        NODE_BODY_WIDTH, NODE_CORNER_SIZE, NODE_FILL, NODE_HEADER_HEIGHT, NODE_MIN_HEIGHT,
+        NODE_BODY_WIDTH, NODE_FILL, NODE_HEADER_HEIGHT, NODE_MIN_HEIGHT, NODE_OUTER_CORNER_SIZE,
         NODE_OUTLINE, NODE_PADDING,
     },
 };
@@ -58,7 +58,7 @@ impl Node {
             let height = NODE_MIN_HEIGHT;
             shapes.push_rect(RectInstance {
                 position: [x, y],
-                size: [NODE_CORNER_SIZE, height],
+                size: [NODE_OUTER_CORNER_SIZE, height],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: LEFT_OUTLINE_FLAT
@@ -66,15 +66,15 @@ impl Node {
                     | BOTTOM_OUTLINE_ANTIDIAGONAL,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_CORNER_SIZE, y],
-                size: [NODE_BODY_WIDTH - NODE_CORNER_SIZE * 2.0, height],
+                position: [x + NODE_OUTER_CORNER_SIZE, y],
+                size: [NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE * 2.0, height],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_BODY_WIDTH - NODE_CORNER_SIZE, y],
-                size: [NODE_CORNER_SIZE, height],
+                position: [x + NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE, y],
+                size: [NODE_OUTER_CORNER_SIZE, height],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: RIGHT_OUTLINE_FLAT
@@ -93,8 +93,14 @@ impl Node {
                 let last = index == self.sockets.len() - 1;
                 let width = socket_size.width + if last { 1.5 } else { 1.0 } * NODE_PADDING;
                 shapes.push_rect(RectInstance {
-                    position: [x, y + size.height - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE],
-                    size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                    position: [
+                        x,
+                        y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
+                    ],
+                    size: [
+                        NODE_OUTER_CORNER_SIZE,
+                        NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
+                    ],
                     fill_color: NODE_FILL,
                     outline_color: NODE_OUTLINE,
                     outline_modes: if first {
@@ -104,18 +110,24 @@ impl Node {
                     },
                 });
                 shapes.push_rect(RectInstance {
-                    position: [x + NODE_CORNER_SIZE, y + size.height - NODE_HEADER_HEIGHT],
-                    size: [width - 2.0 * NODE_CORNER_SIZE, NODE_HEADER_HEIGHT],
+                    position: [
+                        x + NODE_OUTER_CORNER_SIZE,
+                        y + size.height - NODE_HEADER_HEIGHT,
+                    ],
+                    size: [width - 2.0 * NODE_OUTER_CORNER_SIZE, NODE_HEADER_HEIGHT],
                     fill_color: NODE_FILL,
                     outline_color: NODE_OUTLINE,
                     outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
                 });
                 shapes.push_rect(RectInstance {
                     position: [
-                        x + width - NODE_CORNER_SIZE,
-                        y + size.height - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE,
+                        x + width - NODE_OUTER_CORNER_SIZE,
+                        y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
                     ],
-                    size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                    size: [
+                        NODE_OUTER_CORNER_SIZE,
+                        NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
+                    ],
                     fill_color: NODE_FILL,
                     outline_color: NODE_OUTLINE,
                     outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
@@ -123,8 +135,14 @@ impl Node {
                 x += width;
             }
             shapes.push_rect(RectInstance {
-                position: [x, y + size.height - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE],
-                size: [NODE_CORNER_SIZE, NODE_HEADER_HEIGHT + NODE_CORNER_SIZE],
+                position: [
+                    x,
+                    y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
+                ],
+                size: [
+                    NODE_OUTER_CORNER_SIZE,
+                    NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
+                ],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: TOP_OUTLINE_FLAT,
@@ -132,23 +150,23 @@ impl Node {
             shapes.push_rect(RectInstance {
                 position: [x, y],
                 size: [
-                    NODE_CORNER_SIZE,
-                    size.height - NODE_HEADER_HEIGHT - NODE_CORNER_SIZE,
+                    NODE_OUTER_CORNER_SIZE,
+                    size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
                 ],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_CORNER_SIZE, y],
-                size: [NODE_BODY_WIDTH - 2.0 * NODE_CORNER_SIZE, size.height],
+                position: [x + NODE_OUTER_CORNER_SIZE, y],
+                size: [NODE_BODY_WIDTH - 2.0 * NODE_OUTER_CORNER_SIZE, size.height],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_BODY_WIDTH - NODE_CORNER_SIZE, y],
-                size: [NODE_CORNER_SIZE, size.height],
+                position: [x + NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE, y],
+                size: [NODE_OUTER_CORNER_SIZE, size.height],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: RIGHT_OUTLINE_FLAT
