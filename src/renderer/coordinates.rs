@@ -3,6 +3,13 @@ use winit::dpi::PhysicalSize;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct Position {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Size {
     pub width: f32,
     pub height: f32,
@@ -22,13 +29,6 @@ impl Size {
         Self {
             width: 0.0,
             height: 0.0,
-        }
-    }
-
-    pub fn componentwise_max(self, other: Self) -> Self {
-        Self {
-            width: self.width.max(other.width),
-            height: self.height.max(other.height),
         }
     }
 }

@@ -2,9 +2,9 @@ use bytemuck::{Pod, Zeroable};
 use wgpu::{
     Backends, BindGroup, BindGroupLayout, Instance, Surface, SurfaceConfiguration, TextureFormat,
 };
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::window::Window;
 
-use super::{render_device::RenderDevice, size::Size, uniform_buffer::UniformBuffer};
+use super::{coordinates::Size, render_device::RenderDevice, uniform_buffer::UniformBuffer};
 
 pub struct RenderTarget {
     surface: Surface,
@@ -57,20 +57,17 @@ impl RenderTarget {
         instance: &Instance,
         window: &Window,
     ) -> (Surface, SurfaceConfiguration, RenderDevice) {
-        let size = window.inner_size();
         let surface = unsafe { instance.create_surface(window) };
         let (device, format) = RenderDevice::new_for_surface(&instance, &surface).await;
 
-        let config = Self::surface_configuration_from_physical_size(format, size);
+        let config = Self::config_from_window(format, window);
         surface.configure(device.device(), &config);
 
         (surface, config, device)
     }
 
-    fn surface_configuration_from_physical_size(
-        format: TextureFormat,
-        size: PhysicalSize<u32>,
-    ) -> SurfaceConfiguration {
+    fn config_from_window(format: TextureFormat, window: &Window) -> SurfaceConfiguration {
+        let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,

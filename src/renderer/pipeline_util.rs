@@ -7,7 +7,7 @@ use wgpu::{
 
 use super::{render_device::RenderDevice, render_target::RenderTarget};
 
-pub fn make_shader(label: &str, source: &str, device: &RenderDevice) -> ShaderModule {
+pub fn create_shader(label: &str, source: &str, device: &RenderDevice) -> ShaderModule {
     let desc = ShaderModuleDescriptor {
         label: Some(label),
         source: ShaderSource::Wgsl(source.into()),
@@ -15,7 +15,7 @@ pub fn make_shader(label: &str, source: &str, device: &RenderDevice) -> ShaderMo
     device.device().create_shader_module(desc)
 }
 
-pub fn make_render_pipeline(
+pub fn create_render_pipeline(
     label: &str,
     shader: &ShaderModule,
     bind_group_layouts: &[&BindGroupLayout],

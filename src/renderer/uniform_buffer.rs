@@ -19,8 +19,8 @@ pub struct UniformBuffer<T> {
 impl<T: Pod + Zeroable> UniformBuffer<T> {
     pub fn new(label: &str, data: T, device: &RenderDevice) -> Self {
         let buffer = Self::buffer(label, data, device);
-        let bind_group_layout = Self::make_bind_group_layout(label, device);
-        let bind_group = Self::make_bind_group(label, &device, &bind_group_layout, &buffer);
+        let bind_group_layout = Self::create_bind_group_layout(label, device);
+        let bind_group = Self::create_bind_group(label, &device, &bind_group_layout, &buffer);
         Self {
             buffer,
             bind_group_layout,
@@ -54,7 +54,7 @@ impl<T: Pod + Zeroable> UniformBuffer<T> {
         device.device().create_buffer_init(&buffer_desc)
     }
 
-    fn make_bind_group_layout(label: &str, device: &RenderDevice) -> BindGroupLayout {
+    fn create_bind_group_layout(label: &str, device: &RenderDevice) -> BindGroupLayout {
         let label = format!("{} Bind Group Layout", label);
         let desc = BindGroupLayoutDescriptor {
             entries: &[BindGroupLayoutEntry {
@@ -72,7 +72,7 @@ impl<T: Pod + Zeroable> UniformBuffer<T> {
         device.device().create_bind_group_layout(&desc)
     }
 
-    fn make_bind_group(
+    fn create_bind_group(
         label: &str,
         device: &RenderDevice,
         layout: &BindGroupLayout,

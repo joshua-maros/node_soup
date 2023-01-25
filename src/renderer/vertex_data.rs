@@ -45,7 +45,7 @@ const RECT_VERTS: &[Vertex] = &[
 ];
 pub const RECT_VERTS_LEN: usize = RECT_VERTS.len();
 
-pub fn rect_verts_buffer(device: &RenderDevice) -> Buffer {
+pub fn create_rect_verts_buffer(device: &RenderDevice) -> Buffer {
     let desc = BufferInitDescriptor {
         label: Some("Rectangle Vertices"),
         contents: bytemuck::cast_slice(RECT_VERTS),

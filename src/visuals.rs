@@ -1,36 +1,14 @@
 use crate::{
-    constants::{
+    renderer::{
+        Position, RectInstance, Shapes, Size, BOTTOM_OUTLINE_ANTIDIAGONAL, BOTTOM_OUTLINE_DIAGONAL,
+        BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_ANTIDIAGONAL,
+        TOP_OUTLINE_DIAGONAL, TOP_OUTLINE_FLAT,
+    },
+    theme::{
         NODE_BODY_WIDTH, NODE_CORNER_SIZE, NODE_FILL, NODE_HEADER_HEIGHT, NODE_MIN_HEIGHT,
         NODE_OUTLINE, NODE_PADDING,
     },
-    renderer::{
-        rect_data::{
-            RectInstance, BOTTOM_OUTLINE_ANTIDIAGONAL, BOTTOM_OUTLINE_DIAGONAL,
-            BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_ANTIDIAGONAL,
-            TOP_OUTLINE_DIAGONAL, TOP_OUTLINE_FLAT,
-        },
-        size::Size,
-    },
 };
-
-#[derive(Clone, Debug)]
-pub struct Shapes {
-    pub rects: Vec<RectInstance>,
-}
-
-impl Shapes {
-    pub fn new() -> Self {
-        Self { rects: vec![] }
-    }
-
-    pub fn push_rect(&mut self, rect: RectInstance) {
-        self.rects.push(rect)
-    }
-
-    pub fn append(&mut self, other: Self) {
-        self.rects.append(&mut { other.rects });
-    }
-}
 
 pub struct Socket {
     pub node: Node,
@@ -72,8 +50,8 @@ impl Node {
         }
     }
 
-    // x and y are bottom-left corner.
-    pub fn draw(&self, x: f32, y: f32) -> Shapes {
+    pub fn draw(&self, start: Position) -> Shapes {
+        let Position { x, y } = start;
         let size = self.size();
         let mut shapes = Shapes::new();
         if self.sockets.len() == 0 {
@@ -108,10 +86,10 @@ impl Node {
             for (index, socket) in self.sockets.iter().enumerate() {
                 let first = index == 0;
                 let socket_size = socket.size();
-                shapes.append(socket.node.draw(
-                    x + 0.5 * NODE_PADDING,
-                    y + size.height - socket_size.height - NODE_HEADER_HEIGHT - NODE_PADDING,
-                ));
+                shapes.append(socket.node.draw(Position {
+                    x: x + 0.5 * NODE_PADDING,
+                    y: y + size.height - socket_size.height - NODE_HEADER_HEIGHT - NODE_PADDING,
+                }));
                 let last = index == self.sockets.len() - 1;
                 let width = socket_size.width + if last { 1.5 } else { 1.0 } * NODE_PADDING;
                 shapes.push_rect(RectInstance {

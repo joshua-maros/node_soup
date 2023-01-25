@@ -91,17 +91,3 @@ fn fragment_shader(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 }
-
-@fragment
-fn fragment_shader_2(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-}
-
-@fragment
-fn fragment_shader_3(in: VertexOutput) -> @location(0) vec4<f32> {
-    if (in.position.x % 2.0 < 1.0) == (in.position.y % 2.0 < 1.0) {
-        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
-    } else {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    }
-}

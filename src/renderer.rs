@@ -1,8 +1,11 @@
-pub mod pipeline_util;
-pub mod rect_data;
-pub mod render_device;
-pub mod render_engine;
+mod coordinates;
+mod pipeline_util;
+mod rect_data;
+mod render_device;
+mod render_engine;
 mod render_target;
-pub mod size;
-pub mod uniform_buffer;
-pub mod vertex_data;
+mod shapes;
+mod uniform_buffer;
+mod vertex_data;
+
+pub use self::{coordinates::*, rect_data::*, render_engine::RenderEngine, shapes::Shapes};
