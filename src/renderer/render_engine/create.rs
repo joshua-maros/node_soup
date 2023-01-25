@@ -1,8 +1,10 @@
+use wgpu::util::StagingBelt;
 use winit::window::Window;
 
-use super::RenderEngine;
+use super::{MutableResources, ReadOnlyResources, RenderEngine};
 use crate::renderer::{
     coordinates::Size,
+    fonts::Fonts,
     pipeline_util::{create_render_pipeline, create_shader},
     rect_data::RectInstance,
     render_target::RenderTarget,
@@ -22,19 +24,27 @@ impl RenderEngine {
             &device,
             &target,
         );
+        let staging_belt = StagingBelt::new(1024);
+        let fonts = Fonts::new(&device, &target);
         Self {
-            device,
-            target,
-            rect_verts,
-            rect_pipeline,
+            ror: ReadOnlyResources {
+                device,
+                target,
+                rect_verts,
+                rect_pipeline,
+            },
+            mr: MutableResources {
+                staging_belt,
+                fonts,
+            },
         }
     }
 
     pub fn resize_target(&mut self, new_size: Size) {
-        self.target.resize(new_size, &self.device)
+        self.ror.target.resize(new_size, &self.ror.device)
     }
 
     pub fn refresh_target(&mut self) {
-        self.target.refresh(&self.device)
+        self.ror.target.refresh(&self.ror.device)
     }
 }

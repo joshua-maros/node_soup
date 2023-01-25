@@ -1,12 +1,12 @@
 use crate::{
     renderer::{
-        Position, RectInstance, Shapes, Size, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL,
+        Position, RectInstance, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL,
         LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL,
         RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
         NODE_BODY_HEIGHT, NODE_FILL, NODE_HEADER_WIDTH, NODE_INNER_CORNER_SIZE, NODE_MIN_WIDTH,
-        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING,
+        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING, NODE_TEXT_COLOR, NODE_TEXT_SIZE,
     },
 };
 
@@ -82,6 +82,13 @@ impl Node {
                 outline_modes: TOP_OUTLINE_FLAT
                     | LEFT_OUTLINE_DIAGONAL
                     | RIGHT_OUTLINE_ANTIDIAGONAL,
+            });
+            shapes.push_text(Text {
+                text: format!("Hello world!"),
+                position: [x + NODE_MIN_WIDTH / 2.0, y + NODE_BODY_HEIGHT / 2.0],
+                bounds: [NODE_MIN_WIDTH, NODE_BODY_HEIGHT],
+                color: NODE_TEXT_COLOR,
+                size: NODE_TEXT_SIZE,
             });
         } else {
             let mut y = y;

@@ -1,13 +1,31 @@
 mod create;
 mod render;
+mod render_rects;
+mod render_text;
 
-use wgpu::{Buffer, RenderPipeline};
+use wgpu::{util::StagingBelt, Buffer, RenderPipeline, TextureView, CommandEncoder};
 
-use super::{render_device::RenderDevice, render_target::RenderTarget};
+use super::{fonts::Fonts, render_device::RenderDevice, render_target::RenderTarget, Shapes};
+
+struct ReadOnlyResources {
+    device: RenderDevice,
+    target: RenderTarget,
+    rect_verts: Buffer,
+    rect_pipeline: RenderPipeline,
+}
+
+struct MutableResources {
+    staging_belt: StagingBelt,
+    fonts: Fonts,
+}
+
+struct ActiveRenderInfo<'a> {
+    shapes: &'a Shapes,
+    view: &'a TextureView,
+    encoder: &'a mut CommandEncoder,
+}
 
 pub struct RenderEngine {
-    pub(super) device: RenderDevice,
-    pub(super) target: RenderTarget,
-    pub(super) rect_verts: Buffer,
-    pub(super) rect_pipeline: RenderPipeline,
+    ror: ReadOnlyResources,
+    mr: MutableResources,
 }

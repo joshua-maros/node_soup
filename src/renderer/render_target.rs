@@ -108,4 +108,8 @@ impl RenderTarget {
     ) -> UniformBuffer<SurfaceGeometry> {
         UniformBuffer::new("Surface Geometry", Self::surface_geometry(config), device)
     }
+
+    pub(crate) fn size(&self) -> Size {
+        Self::surface_geometry(&self.config).size
+    }
 }
