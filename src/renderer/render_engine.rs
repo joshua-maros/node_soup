@@ -2,6 +2,7 @@ mod create;
 mod render;
 mod render_rects;
 mod render_text;
+mod clear;
 
 use wgpu::{util::StagingBelt, Buffer, RenderPipeline, TextureView, CommandEncoder};
 

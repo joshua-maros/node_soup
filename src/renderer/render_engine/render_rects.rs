@@ -48,7 +48,7 @@ fn start_render_pass<'a, 'b: 'a>(info: &'a mut ActiveRenderInfo<'b>) -> RenderPa
             view: info.view,
             resolve_target: None,
             ops: Operations {
-                load: LoadOp::Clear(theme::BG),
+                load: LoadOp::Load,
                 store: true,
             },
         })],

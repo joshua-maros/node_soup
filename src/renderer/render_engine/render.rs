@@ -6,8 +6,8 @@ use wgpu::{
 };
 
 use super::{
-    render_rects::render_rects, render_text::render_text, ActiveRenderInfo, MutableResources,
-    ReadOnlyResources, RenderEngine,
+    clear::clear, render_rects::render_rects, render_text::render_text, ActiveRenderInfo,
+    MutableResources, ReadOnlyResources, RenderEngine,
 };
 use crate::{
     renderer::{fonts::Fonts, shapes::Shapes, vertex_data::RECT_VERTS_LEN},
@@ -15,16 +15,23 @@ use crate::{
 };
 
 impl RenderEngine {
-    pub fn render(&mut self, shapes: &Shapes) -> Result<(), SurfaceError> {
+    pub fn render(&mut self, layers: &[&Shapes]) -> Result<(), SurfaceError> {
         let (target, view, mut encoder) = start_rendering(&self.ror)?;
         let mut info = ActiveRenderInfo {
-            shapes,
+            shapes: &Shapes::new(),
             view: &view,
             encoder: &mut encoder,
         };
-        render_rects(&self.ror, &mut info);
-        render_text(&self.ror, &mut self.mr, &mut info);
-        drop(info);
+        clear(&self.ror, &mut info);
+        for shapes in layers {
+            let mut info = ActiveRenderInfo {
+                shapes,
+                view: &view,
+                encoder: &mut encoder,
+            };
+            render_rects(&self.ror, &mut info);
+            render_text(&self.ror, &mut self.mr, &mut info);
+        }
         finish_rendering(&self.ror, &mut self.mr, encoder, target);
         Ok(())
     }
