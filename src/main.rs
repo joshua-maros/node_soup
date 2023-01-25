@@ -2,6 +2,8 @@ mod app;
 mod renderer;
 mod theme;
 mod visuals;
+mod engine;
+mod util;
 
 use app::App;
 

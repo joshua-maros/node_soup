@@ -47,4 +47,8 @@ impl RenderEngine {
     pub fn refresh_target(&mut self) {
         self.ror.target.refresh(&self.ror.device)
     }
+
+    pub fn target_size(&self) -> Size {
+        self.ror.target.size()
+    }
 }

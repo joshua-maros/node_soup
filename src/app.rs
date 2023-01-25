@@ -7,12 +7,14 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::renderer::RenderEngine;
+use crate::{engine::Engine, renderer::RenderEngine};
 
 pub struct App {
     window: Window,
     render_engine: RenderEngine,
     control_flow: ControlFlow,
+    computation_engine: Engine,
+    result_drawer_size: f32,
 }
 
 impl App {
@@ -23,11 +25,14 @@ impl App {
             .build(&event_loop)
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
+        let computation_engine = Engine::new();
         App {
             window,
             render_engine,
             // This is overwritten whenever an event is received anyway.
             control_flow: ControlFlow::Wait,
+            computation_engine,
+            result_drawer_size: 200.0,
         }
         .run(event_loop)
     }
