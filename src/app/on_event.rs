@@ -1,14 +1,12 @@
 use wgpu::SurfaceError;
 use winit::{
-    dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    event_loop::ControlFlow,
 };
 
 use super::App;
 use crate::{
-    renderer::{Position, RenderEngine},
+    renderer::Position,
     visuals::{Node, Socket},
 };
 

@@ -1,22 +1,13 @@
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
     Buffer, BufferUsages, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, SurfaceError, SurfaceTexture,
-    TextureView, TextureViewDescriptor,
+    RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture, TextureView,
+    TextureViewDescriptor,
 };
-use winit::window::Window;
 
 use super::RenderEngine;
 use crate::{
-    renderer::{
-        coordinates::Size,
-        pipeline_util::{create_render_pipeline, create_shader},
-        rect_data::RectInstance,
-        render_device::RenderDevice,
-        render_target::RenderTarget,
-        shapes::Shapes,
-        vertex_data::{create_rect_verts_buffer, Vertex, RECT_VERTS_LEN},
-    },
+    renderer::{shapes::Shapes, vertex_data::RECT_VERTS_LEN},
     theme::{self},
 };
 

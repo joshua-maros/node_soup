@@ -1,17 +1,12 @@
 mod on_event;
 
-use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
-use crate::{
-    renderer::RenderEngine,
-    visuals::{Node, Socket},
-};
+use crate::renderer::RenderEngine;
 
 pub struct App {
     window: Window,
