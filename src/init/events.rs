@@ -6,7 +6,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use super::render_target::{RenderTarget, VisualNode};
+use super::old_renderer::{RenderTarget, VisualNode};
 
 pub struct EventHandler {
     control_flow: ControlFlow,
