@@ -52,37 +52,37 @@ fn fragment_shader(in: VertexOutput) -> @location(0) vec4<f32> {
     let x = in.position.x;
     let y = in.position.y;
 
-    let left_border_mode = (in.border_modes >> 4u) & 0x1u;
-    let right_border_mode = (in.border_modes >> 5u) & 0x1u;
-    let bottom_border_mode = (in.border_modes >> 2u) & 0x3u;
-    let top_border_mode = in.border_modes & 0x3u;
+    let left_border_mode = in.border_modes & 0x3u;
+    let right_border_mode = (in.border_modes >> 2u) & 0x3u;
+    let bottom_border_mode = (in.border_modes >> 4u) & 0x1u;
+    let top_border_mode = (in.border_modes >> 5u) & 0x1u;
 
-    var bottom = in.start.y;
-    var top = in.end.y;
+    var left = in.start.x;
+    var right = in.end.x;
 
-    if bottom_border_mode == 2u {
+    if left_border_mode == 2u {
         // Diagonal mode.
-        bottom += x - in.start.x;
-    } else if bottom_border_mode == 3u {
+        left += y - in.start.y;
+    } else if left_border_mode == 3u {
         // Antidiagonal mode.
-        bottom += in.end.x - x - 1.0;
+        left += in.end.y - y - 1.0;
     }
 
-    if top_border_mode == 2u {
+    if right_border_mode == 2u {
         // Diagonal mode.
-        top -= in.end.x - x;
-    } else if top_border_mode == 3u {
+        right -= in.end.y - y;
+    } else if right_border_mode == 3u {
         // Antidiagonal mode.
-        top -= x - in.start.x;
+        right -= y - in.start.y;
     }
 
     let thickness = 1.0;
 
-    if y >= bottom && y <= top {
-        if (left_border_mode == 1u && x <= in.start.x + thickness)
-            || (right_border_mode == 1u && x >= in.end.x - thickness)
-            || (bottom_border_mode > 0u && y <= bottom + thickness)
-            || (top_border_mode > 0u && y >= top - thickness) {
+    if x >= left && x <= right {
+        if (left_border_mode > 0u && x <= left + thickness)
+            || (right_border_mode > 0u && x >= right - thickness)
+            || (bottom_border_mode > 0u && y <= in.start.y + thickness)
+            || (top_border_mode > 0u && y >= in.end.y - thickness) {
             return vec4<f32>(in.outline_color, 1.0);
         } else {
             return vec4<f32>(in.fill_color, 1.0);

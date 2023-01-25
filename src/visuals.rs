@@ -1,12 +1,12 @@
 use crate::{
     renderer::{
-        Position, RectInstance, Shapes, Size, BOTTOM_OUTLINE_ANTIDIAGONAL, BOTTOM_OUTLINE_DIAGONAL,
-        BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_ANTIDIAGONAL,
-        TOP_OUTLINE_DIAGONAL, TOP_OUTLINE_FLAT,
+        Position, RectInstance, Shapes, Size, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL,
+        LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL,
+        RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
-        NODE_BODY_WIDTH, NODE_FILL, NODE_HEADER_HEIGHT, NODE_MIN_HEIGHT, NODE_OUTER_CORNER_SIZE,
-        NODE_OUTLINE, NODE_PADDING,
+        NODE_BODY_HEIGHT, NODE_FILL, NODE_HEADER_WIDTH, NODE_INNER_CORNER_SIZE, NODE_MIN_WIDTH,
+        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING,
     },
 };
 
@@ -32,20 +32,20 @@ impl Node {
     pub fn size(&self) -> Size {
         if self.sockets.len() == 0 {
             Size {
-                width: NODE_BODY_WIDTH,
-                height: NODE_MIN_HEIGHT,
+                width: NODE_MIN_WIDTH,
+                height: NODE_BODY_HEIGHT,
             }
         } else {
             let socket_child_sizes = self.sockets.iter().map(Socket::size);
             let size_from_children = socket_child_sizes.fold(Size::zero(), |prev, next| Size {
-                width: prev.width + next.width,
-                height: prev.height.max(next.height),
+                width: prev.width.max(next.width),
+                height: prev.height + next.height,
             });
             Size {
-                width: size_from_children.width
+                width: size_from_children.width + NODE_PADDING + NODE_HEADER_WIDTH,
+                height: size_from_children.height
                     + (self.sockets.len() as f32 + 0.5) * NODE_PADDING
-                    + NODE_BODY_WIDTH,
-                height: size_from_children.height + NODE_PADDING + NODE_HEADER_HEIGHT,
+                    + NODE_BODY_HEIGHT,
             }
         }
     }
@@ -55,123 +55,132 @@ impl Node {
         let size = self.size();
         let mut shapes = Shapes::new();
         if self.sockets.len() == 0 {
-            let height = NODE_MIN_HEIGHT;
             shapes.push_rect(RectInstance {
                 position: [x, y],
-                size: [NODE_OUTER_CORNER_SIZE, height],
+                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
-                outline_modes: LEFT_OUTLINE_FLAT
-                    | TOP_OUTLINE_DIAGONAL
-                    | BOTTOM_OUTLINE_ANTIDIAGONAL,
+                outline_modes: BOTTOM_OUTLINE_FLAT
+                    | LEFT_OUTLINE_ANTIDIAGONAL
+                    | RIGHT_OUTLINE_DIAGONAL,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_OUTER_CORNER_SIZE, y],
-                size: [NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE * 2.0, height],
+                position: [x, y + NODE_OUTER_CORNER_SIZE],
+                size: [
+                    NODE_MIN_WIDTH,
+                    NODE_BODY_HEIGHT - 2.0 * NODE_OUTER_CORNER_SIZE,
+                ],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
-                outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+                outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE, y],
-                size: [NODE_OUTER_CORNER_SIZE, height],
+                position: [x, y + NODE_BODY_HEIGHT - NODE_OUTER_CORNER_SIZE],
+                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
-                outline_modes: RIGHT_OUTLINE_FLAT
-                    | TOP_OUTLINE_ANTIDIAGONAL
-                    | BOTTOM_OUTLINE_DIAGONAL,
+                outline_modes: TOP_OUTLINE_FLAT
+                    | LEFT_OUTLINE_DIAGONAL
+                    | RIGHT_OUTLINE_ANTIDIAGONAL,
             });
         } else {
-            let mut x = x;
+            let mut y = y;
             for (index, socket) in self.sockets.iter().enumerate() {
                 let first = index == 0;
                 let socket_size = socket.size();
-                shapes.append(socket.node.draw(Position {
-                    x: x + 0.5 * NODE_PADDING,
-                    y: y + size.height - socket_size.height - NODE_HEADER_HEIGHT - NODE_PADDING,
-                }));
                 let last = index == self.sockets.len() - 1;
-                let width = socket_size.width + if last { 1.5 } else { 1.0 } * NODE_PADDING;
+                let height = socket_size.height + if last { 1.5 } else { 1.0 } * NODE_PADDING;
+                shapes.append(socket.node.draw(Position {
+                    x: x + NODE_HEADER_WIDTH + NODE_PADDING,
+                    y: y + 0.5 * NODE_PADDING,
+                }));
+                if first {
+                    shapes.push_rect(RectInstance {
+                        position: [x, y],
+                        size: [
+                            NODE_HEADER_WIDTH + NODE_OUTER_CORNER_SIZE,
+                            NODE_OUTER_CORNER_SIZE,
+                        ],
+                        fill_color: NODE_FILL,
+                        outline_color: NODE_OUTLINE,
+                        outline_modes: BOTTOM_OUTLINE_FLAT
+                            | LEFT_OUTLINE_ANTIDIAGONAL
+                            | RIGHT_OUTLINE_ANTIDIAGONAL,
+                    });
+                    shapes.push_rect(RectInstance {
+                        position: [x, y + NODE_OUTER_CORNER_SIZE],
+                        size: [
+                            NODE_HEADER_WIDTH,
+                            height - NODE_OUTER_CORNER_SIZE - NODE_INNER_CORNER_SIZE,
+                        ],
+                        fill_color: NODE_FILL,
+                        outline_color: NODE_OUTLINE,
+                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
+                    });
+                } else {
+                    shapes.push_rect(RectInstance {
+                        position: [x, y],
+                        size: [
+                            NODE_HEADER_WIDTH + NODE_INNER_CORNER_SIZE,
+                            NODE_INNER_CORNER_SIZE,
+                        ],
+                        fill_color: NODE_FILL,
+                        outline_color: NODE_OUTLINE,
+                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_ANTIDIAGONAL,
+                    });
+                    shapes.push_rect(RectInstance {
+                        position: [x, y + NODE_INNER_CORNER_SIZE],
+                        size: [NODE_HEADER_WIDTH, height - 2.0 * NODE_INNER_CORNER_SIZE],
+                        fill_color: NODE_FILL,
+                        outline_color: NODE_OUTLINE,
+                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
+                    });
+                }
                 shapes.push_rect(RectInstance {
-                    position: [
-                        x,
-                        y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
-                    ],
+                    position: [x, y + height - NODE_INNER_CORNER_SIZE],
                     size: [
-                        NODE_OUTER_CORNER_SIZE,
-                        NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
+                        NODE_HEADER_WIDTH + NODE_INNER_CORNER_SIZE,
+                        NODE_INNER_CORNER_SIZE,
                     ],
                     fill_color: NODE_FILL,
                     outline_color: NODE_OUTLINE,
-                    outline_modes: if first {
-                        LEFT_OUTLINE_FLAT | TOP_OUTLINE_DIAGONAL | BOTTOM_OUTLINE_DIAGONAL
-                    } else {
-                        TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_DIAGONAL
-                    },
+                    outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_DIAGONAL,
                 });
-                shapes.push_rect(RectInstance {
-                    position: [
-                        x + NODE_OUTER_CORNER_SIZE,
-                        y + size.height - NODE_HEADER_HEIGHT,
-                    ],
-                    size: [width - 2.0 * NODE_OUTER_CORNER_SIZE, NODE_HEADER_HEIGHT],
-                    fill_color: NODE_FILL,
-                    outline_color: NODE_OUTLINE,
-                    outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
-                });
-                shapes.push_rect(RectInstance {
-                    position: [
-                        x + width - NODE_OUTER_CORNER_SIZE,
-                        y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
-                    ],
-                    size: [
-                        NODE_OUTER_CORNER_SIZE,
-                        NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
-                    ],
-                    fill_color: NODE_FILL,
-                    outline_color: NODE_OUTLINE,
-                    outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
-                });
-                x += width;
+                y += height;
             }
-            shapes.push_rect(RectInstance {
-                position: [
-                    x,
-                    y + size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
-                ],
-                size: [
-                    NODE_OUTER_CORNER_SIZE,
-                    NODE_HEADER_HEIGHT + NODE_OUTER_CORNER_SIZE,
-                ],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: TOP_OUTLINE_FLAT,
-            });
+            let skip = NODE_HEADER_WIDTH + NODE_INNER_CORNER_SIZE;
             shapes.push_rect(RectInstance {
                 position: [x, y],
+                size: [skip, NODE_OUTER_CORNER_SIZE],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: LEFT_OUTLINE_FLAT,
+            });
+            shapes.push_rect(RectInstance {
+                position: [x + skip, y],
+                size: [NODE_MIN_WIDTH - skip, NODE_OUTER_CORNER_SIZE],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: BOTTOM_OUTLINE_FLAT | RIGHT_OUTLINE_DIAGONAL,
+            });
+            shapes.push_rect(RectInstance {
+                position: [x, y + NODE_OUTER_CORNER_SIZE],
                 size: [
-                    NODE_OUTER_CORNER_SIZE,
-                    size.height - NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE,
+                    NODE_MIN_WIDTH,
+                    NODE_BODY_HEIGHT - 2.0 * NODE_OUTER_CORNER_SIZE,
                 ],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
-                outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_ANTIDIAGONAL,
+                outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
             });
             shapes.push_rect(RectInstance {
-                position: [x + NODE_OUTER_CORNER_SIZE, y],
-                size: [NODE_BODY_WIDTH - 2.0 * NODE_OUTER_CORNER_SIZE, size.height],
+                position: [x, y + NODE_BODY_HEIGHT - NODE_OUTER_CORNER_SIZE],
+                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
-                outline_modes: TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
-            });
-            shapes.push_rect(RectInstance {
-                position: [x + NODE_BODY_WIDTH - NODE_OUTER_CORNER_SIZE, y],
-                size: [NODE_OUTER_CORNER_SIZE, size.height],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: RIGHT_OUTLINE_FLAT
-                    | TOP_OUTLINE_ANTIDIAGONAL
-                    | BOTTOM_OUTLINE_DIAGONAL,
+                outline_modes: TOP_OUTLINE_FLAT
+                    | LEFT_OUTLINE_DIAGONAL
+                    | RIGHT_OUTLINE_ANTIDIAGONAL,
             });
         }
         shapes
