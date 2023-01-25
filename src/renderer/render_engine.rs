@@ -10,33 +10,17 @@ use wgpu::{
 use winit::window::Window;
 
 use super::{
-    old_renderer::{RectInstance, Size, Vertex, VisualNode},
     pipeline_util::{make_render_pipeline, make_shader},
+    rect_data::RectInstance,
     render_device::RenderDevice,
     render_target::RenderTarget,
+    size::Size,
+    vertex_data::{rect_verts_buffer, Vertex, RECT_VERTS_LEN},
 };
-use crate::constants::{self};
-
-const RECT_VERTS: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 0.0],
-    },
-    Vertex {
-        position: [0.0, 1.0],
-    },
-    Vertex {
-        position: [1.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 1.0],
-    },
-    Vertex {
-        position: [0.0, 1.0],
-    },
-];
+use crate::{
+    constants::{self},
+    visuals::Shapes,
+};
 
 pub struct RenderEngine {
     device: RenderDevice,
@@ -53,7 +37,7 @@ impl RenderEngine {
             include_str!("../shaders/shapes.wgsl"),
             &device,
         );
-        let rect_verts = Self::rect_verts_buffer(&device);
+        let rect_verts = rect_verts_buffer(&device);
         let main_pipeline = make_render_pipeline(
             "Main Pipeline",
             &main_shader,
@@ -70,15 +54,6 @@ impl RenderEngine {
         }
     }
 
-    fn rect_verts_buffer(device: &RenderDevice) -> Buffer {
-        let desc = BufferInitDescriptor {
-            label: Some("Rectangle Vertices"),
-            contents: bytemuck::cast_slice(RECT_VERTS),
-            usage: BufferUsages::VERTEX,
-        };
-        device.device().create_buffer_init(&desc)
-    }
-
     pub fn resize_target(&mut self, new_size: Size) {
         self.target.resize(new_size, &self.device)
     }
@@ -87,7 +62,7 @@ impl RenderEngine {
         self.target.refresh(&self.device)
     }
 
-    pub fn render_node(&self, node: &VisualNode) -> Result<(), SurfaceError> {
+    pub fn render_shapes(&self, shapes: &Shapes) -> Result<(), SurfaceError> {
         let target = self.target.surface().get_current_texture()?;
         let view_desc = TextureViewDescriptor {
             ..Default::default()
@@ -98,10 +73,10 @@ impl RenderEngine {
         };
         let mut encoder = self.device.device().create_command_encoder(&encoder_desc);
 
-        let contents = node.draw(100.0, 100.0);
+        let contents = &shapes.rects;
         let buffer_desc = BufferInitDescriptor {
             label: Some("Node Geometry Buffer"),
-            contents: bytemuck::cast_slice(&contents),
+            contents: bytemuck::cast_slice(contents),
             usage: BufferUsages::VERTEX,
         };
         let instance_buffer = self.device.device().create_buffer_init(&buffer_desc);
@@ -124,7 +99,7 @@ impl RenderEngine {
         render_pass.set_vertex_buffer(0, self.rect_verts.slice(..));
         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
         render_pass.set_bind_group(0, self.target.surface_geometry_bind_group(), &[]);
-        render_pass.draw(0..RECT_VERTS.len() as _, 0..contents.len() as _);
+        render_pass.draw(0..RECT_VERTS_LEN as _, 0..contents.len() as _);
 
         drop(render_pass);
         self.device.queue().submit([encoder.finish()]);

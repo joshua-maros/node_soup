@@ -7,7 +7,7 @@ use wgpu::{
 };
 use winit::{dpi::PhysicalSize, platform::unix::x11::util::Geometry, window::Window};
 
-use super::{old_renderer::Size, render_device::RenderDevice, uniform_buffer::UniformBuffer};
+use super::{render_device::RenderDevice, uniform_buffer::UniformBuffer, size::Size};
 
 pub struct RenderTarget {
     surface: Surface,

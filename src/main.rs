@@ -1,7 +1,5 @@
-use init::{
-    old_renderer::{Size, VisualNode, VisualSocket},
-    render_engine::RenderEngine,
-};
+use renderer::render_engine::RenderEngine;
+use visuals::{Node, Socket};
 use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalSize,
@@ -11,7 +9,8 @@ use winit::{
 };
 
 pub mod constants;
-mod init;
+mod renderer;
+pub mod visuals;
 
 pub struct App {
     window: Window,
@@ -45,16 +44,16 @@ impl App {
     }
 
     fn on_event(&mut self, event: Event<()>) {
-        let node = VisualNode {
+        let node = Node {
             sockets: vec![
-                VisualSocket::new(VisualNode {
-                    sockets: vec![VisualSocket::new(VisualNode { sockets: vec![] })],
+                Socket::new(Node {
+                    sockets: vec![Socket::new(Node { sockets: vec![] })],
                 }),
-                VisualSocket::new(VisualNode { sockets: vec![] }),
+                Socket::new(Node { sockets: vec![] }),
             ],
         };
         match event {
-            Event::RedrawRequested(window_id) => match self.render_engine.render_node(&node) {
+            Event::RedrawRequested(window_id) => match self.render_engine.render_shapes(&node.draw(0.0, 0.0)) {
                 Ok(()) => (),
                 Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
                     self.render_engine.refresh_target()
@@ -64,11 +63,7 @@ impl App {
             },
             Event::WindowEvent { window_id, event } => {
                 if let WindowEvent::Resized(new_size) = event {
-                    let new_size = Size {
-                        width: new_size.width as _,
-                        height: new_size.height as _,
-                    };
-                    self.render_engine.resize_target(new_size)
+                    self.render_engine.resize_target(new_size.into())
                 } else {
                     self.on_window_event(event)
                 }
