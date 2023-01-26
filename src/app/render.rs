@@ -12,7 +12,8 @@ use crate::{
 
 impl App {
     pub(super) fn render(&mut self) {
-        let visual = self.computation_engine.root_node().visual();
+        let root_node = &self.computation_engine[self.computation_engine.root_node()];
+        let visual = root_node.visual(&self.computation_engine);
         let size = visual.size();
         let pos = Position {
             x: self.result_drawer_size,

@@ -11,6 +11,7 @@ bytemuck = {version = "1.12.3", features = ["derive"]}
 env_logger = "0.10.0"
 itertools = "0.10.5"
 log = "0.4.17"
+maplit = "1.0.2"
 pollster = "0.2.5"
 wgpu = "0.14.2"
 wgpu_glyph = "0.18.0"

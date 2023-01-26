@@ -1,3 +1,5 @@
+#![feature(ptr_to_from_bits)]
+
 mod app;
 mod renderer;
 mod theme;
