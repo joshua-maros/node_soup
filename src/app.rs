@@ -14,7 +14,7 @@ pub struct App {
     render_engine: RenderEngine,
     control_flow: ControlFlow,
     computation_engine: Engine,
-    result_drawer_size: f32,
+    preview_drawer_size: f32,
 }
 
 impl App {
@@ -32,7 +32,7 @@ impl App {
             // This is overwritten whenever an event is received anyway.
             control_flow: ControlFlow::Wait,
             computation_engine,
-            result_drawer_size: 200.0,
+            preview_drawer_size: 200.0,
         }
         .run(event_loop)
     }
