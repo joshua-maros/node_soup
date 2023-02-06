@@ -7,7 +7,7 @@ use winit::{
 
 use super::{App, DragTarget};
 use crate::{
-    engine::ParameterId,
+    engine::{ParameterId, Value},
     renderer::Position,
     widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
@@ -101,22 +101,14 @@ impl App {
             }
             return;
         }
-        self.hovering  = Some(candidate.kind.clone());
+        self.hovering = Some(candidate.kind.clone());
     }
 
     fn drag_parameter(&mut self, id: ParameterId, d: (f32, f32)) {
-        let mut er = EventResponse::default();
-        self.parameter_widgets
-            .get_mut(&id)
-            .unwrap()
-            .on_drag(&mut er, d);
-        if let Some(value) = er.new_value {
-            for (index, param) in self.computation_engine.root_parameters().iter().enumerate() {
-                if param.id == id {
-                    *self.computation_engine.parameter_preview_mut(index) = value;
-                    break;
-                }
-            }
+        let value = self.computation_engine.parameter_preview_mut(id);
+        if let Value::Float(value) = value {
+            let d = d.0 + d.1;
+            *value += d;
         }
     }
 }

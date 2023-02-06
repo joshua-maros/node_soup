@@ -144,10 +144,5 @@ impl ValueWidget for SimpleValueWidget {
     fn draw(&self, start: Position, layer: &mut Shapes) {}
 
     fn on_drag(&mut self, er: &mut EventResponse, offset: (f32, f32)) {
-        if let Value::Float(value) = &mut self.value {
-            let d = offset.0 + offset.1;
-            *value += d;
-            er.new_value = Some(self.value.clone());
-        }
     }
 }

@@ -288,16 +288,12 @@ impl Engine {
         &self.root_parameters
     }
 
-    pub fn parameter_preview(&self, index: usize) -> &Value {
-        self.parameter_preview_values
-            .get(&self.root_parameters[index].id)
-            .unwrap()
+    pub fn parameter_preview(&self, id: ParameterId) -> &Value {
+        self.parameter_preview_values.get(&id).unwrap()
     }
 
-    pub fn parameter_preview_mut(&mut self, index: usize) -> &mut Value {
-        self.parameter_preview_values
-            .get_mut(&self.root_parameters[index].id)
-            .unwrap()
+    pub fn parameter_preview_mut(&mut self, id: ParameterId) -> &mut Value {
+        self.parameter_preview_values.get_mut(&id).unwrap()
     }
 
     pub fn evaluate_root_result_preview(&self) -> Value {

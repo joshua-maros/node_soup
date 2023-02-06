@@ -50,8 +50,8 @@ impl App {
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
         let mut y = 0.0;
         let mut bboxes = Vec::new();
-        for (index, parameter) in self.computation_engine.root_parameters().iter().enumerate() {
-            let value = self.computation_engine.parameter_preview(index);
+        for parameter in self.computation_engine.root_parameters() {
+            let value = self.computation_engine.parameter_preview(parameter.id);
             let bbox = render_parameter_preview(Position { x: 0.0, y }, layer, parameter, value);
             y = bbox.end.y;
             bboxes.push(bbox);
