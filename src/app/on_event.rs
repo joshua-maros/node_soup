@@ -9,7 +9,7 @@ use super::{App, DragTarget};
 use crate::{
     engine::ParameterId,
     renderer::Position,
-    visuals::{EventResponse, Node, Socket, ValueWidget},
+    widgets::{EventResponse, Node, Socket, ValueWidget},
 };
 
 impl App {

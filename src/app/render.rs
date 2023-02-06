@@ -7,7 +7,7 @@ use winit::{
 use super::App;
 use crate::{
     renderer::{Position, Shapes},
-    visuals::{Node, Socket, ValueWidget},
+    widgets::{Node, Socket, ValueWidget},
 };
 
 impl App {

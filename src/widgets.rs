@@ -1,7 +1,7 @@
 use wgpu_glyph::{HorizontalAlign, VerticalAlign};
 
 use crate::{
-    engine::Value,
+    engine::{Value, ParameterId},
     renderer::{
         Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
@@ -13,6 +13,32 @@ use crate::{
         PARAMETER_LABEL_SIZE,
     },
 };
+
+#[derive(Clone, Debug)]
+pub enum BoundingBoxKind {
+    EditParameter(ParameterId),
+    Parent(Vec<BoundingBox>),
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundingBox {
+    pub start: Position,
+    pub end: Position,
+    pub kind: BoundingBoxKind,
+}
+
+impl BoundingBox {
+    pub fn new_start_end(start: Position, end: Position, kind: BoundingBoxKind) -> Self {
+        assert!(start.x <= end.x);
+        assert!(start.y <= end.y);
+        Self { start, end ,kind}
+    }
+
+    pub fn new_start_size(start: Position, size: Size, kind: BoundingBoxKind) -> Self {
+        assert!(!size.is_negative());
+        Self::new_start_end(start, start + size, kind)
+    }
+}
 
 pub struct Socket {
     pub node: Node,

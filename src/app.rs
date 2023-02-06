@@ -13,7 +13,7 @@ use winit::{
 use crate::{
     engine::{Engine, ParameterId},
     renderer::{Position, RenderEngine},
-    visuals::ValueWidget,
+    widgets::ValueWidget,
 };
 
 #[derive(Clone, Debug)]
@@ -75,7 +75,6 @@ impl App {
     fn on_mouse_down(&mut self, button: MouseButton) {
         if button == MouseButton::Left {
             self.dragging = self.hovering.clone();
-            println!("{:#?}", self.dragging);
         }
     }
 

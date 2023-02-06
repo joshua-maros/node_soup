@@ -3,7 +3,7 @@
 mod app;
 mod renderer;
 mod theme;
-mod visuals;
+mod widgets;
 mod engine;
 mod util;
 

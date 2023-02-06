@@ -11,7 +11,7 @@ use wgpu::PrimitiveState;
 use crate::{
     renderer::{Position, Shapes},
     util::{self, Id, IdCreator},
-    visuals::{self, SimpleValueWidget},
+    widgets::{self, SimpleValueWidget},
 };
 
 pub struct Parameter {
@@ -326,15 +326,15 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn visual(&self, engine: &Engine) -> visuals::Node {
+    pub fn visual(&self, engine: &Engine) -> widgets::Node {
         let argument_names = self.operation.arg_names();
-        visuals::Node {
+        widgets::Node {
             name: self.operation.name(),
             sockets: self
                 .arguments
                 .iter()
                 .enumerate()
-                .map(|(index, &arg)| visuals::Socket {
+                .map(|(index, &arg)| widgets::Socket {
                     name: argument_names[index.min(argument_names.len() - 1)].to_owned(),
                     node: engine[arg].visual(engine),
                 })

@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use bytemuck::{Pod, Zeroable};
 use winit::dpi::PhysicalSize;
 
@@ -29,6 +31,21 @@ impl Size {
         Self {
             width: 0.0,
             height: 0.0,
+        }
+    }
+
+    pub fn is_negative(&self) -> bool {
+        self.width < 0.0 || self.height < 0.0
+    }
+}
+
+impl Add<Size> for Position {
+    type Output = Position;
+
+    fn add(self, rhs: Size) -> Self::Output {
+        Position {
+            x: self.x + rhs.width,
+            y: self.y + rhs.height,
         }
     }
 }
