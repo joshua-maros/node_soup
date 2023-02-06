@@ -1,13 +1,23 @@
 mod on_event;
 mod render;
 
+use std::collections::HashMap;
+
 use winit::{
     dpi::PhysicalSize,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
-use crate::{engine::Engine, renderer::RenderEngine};
+use crate::{
+    engine::{Engine, ParameterId},
+    renderer::{Position, RenderEngine},
+    visuals::ValueWidget,
+};
+
+pub enum DragTarget {
+    Parameter(ParameterId)
+}
 
 pub struct App {
     window: Window,
@@ -15,6 +25,10 @@ pub struct App {
     control_flow: ControlFlow,
     computation_engine: Engine,
     preview_drawer_size: f32,
+    parameter_widgets: HashMap<ParameterId, Box<dyn ValueWidget>>,
+    previous_mouse_pos: Position,
+    hovering: Option<DragTarget>,
+    dragging: Option<DragTarget>,
 }
 
 impl App {
@@ -33,6 +47,10 @@ impl App {
             control_flow: ControlFlow::Wait,
             computation_engine,
             preview_drawer_size: 200.0,
+            parameter_widgets: HashMap::new(),
+            previous_mouse_pos: Position { x: 0.0, y: 0.0 },
+            hovering: None,
+            dragging: None,
         }
         .run(event_loop)
     }

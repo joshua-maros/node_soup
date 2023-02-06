@@ -208,18 +208,41 @@ impl Node {
 
 pub struct SimpleValueWidget {
     pub label: String,
-    pub value: String,
+    pub value: Value,
 }
 
-impl SimpleValueWidget {
-    pub fn size(&self) -> Size {
+pub struct EventResponse {
+    pub request_focus: bool,
+    pub new_value: Option<Value>,
+}
+
+impl Default for EventResponse {
+    fn default() -> Self {
+        Self {
+            request_focus: false,
+            new_value: None,
+        }
+    }
+}
+
+pub trait ValueWidget {
+    fn size(&self) -> Size;
+    fn draw(&self, start: Position, layer: &mut Shapes);
+    fn on_click(&mut self, er: &mut EventResponse) {}
+    fn on_drag_start(&mut self, er: &mut EventResponse) {}
+    fn on_drag(&mut self, er: &mut EventResponse, offset: (f32, f32)) {}
+    fn on_drag_end(&mut self, er: &mut EventResponse) {}
+}
+
+impl ValueWidget for SimpleValueWidget {
+    fn size(&self) -> Size {
         Size {
             width: NODE_MIN_WIDTH,
             height: NODE_HEADER_HEIGHT,
         }
     }
 
-    pub fn draw(&self, start: Position, layer: &mut Shapes) {
+    fn draw(&self, start: Position, layer: &mut Shapes) {
         let size = self.size();
         layer.push_rect(RectInstance {
             position: [start.x, start.y],
@@ -234,12 +257,20 @@ impl SimpleValueWidget {
         layer.push_text(Text {
             sections: vec![
                 Section::parameter_label(self.label.clone()),
-                Section::node_label(self.value.clone()),
+                Section::node_label(self.value.display()),
             ],
             center: [start.x + NODE_PADDING, start.y + size.height / 2.0],
             bounds: [size.width, size.height],
             horizontal_align: HorizontalAlign::Left,
             vertical_align: VerticalAlign::Center,
         });
+    }
+
+    fn on_drag(&mut self, er: &mut EventResponse, offset: (f32, f32)) {
+        if let Value::Float(value) = &mut self.value {
+            let d = offset.0 + offset.1;
+            *value += d;
+            er.new_value = Some(self.value.clone());
+        }
     }
 }

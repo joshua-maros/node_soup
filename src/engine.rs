@@ -37,7 +37,7 @@ impl Value {
     pub fn visual(&self, label: String) -> SimpleValueWidget {
         SimpleValueWidget {
             label,
-            value: self.clone().display(),
+            value: self.clone(),
         }
     }
 

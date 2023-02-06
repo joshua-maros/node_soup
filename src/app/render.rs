@@ -7,7 +7,7 @@ use winit::{
 use super::App;
 use crate::{
     renderer::{Position, Shapes},
-    visuals::{Node, Socket},
+    visuals::{Node, Socket, ValueWidget},
 };
 
 impl App {
@@ -42,8 +42,12 @@ impl App {
     fn render_preview_drawer(&mut self, layer: &mut Shapes) {
         let mut y = self.render_engine.target_size().height;
         for (index, parameter) in self.computation_engine.root_parameters().iter().enumerate() {
-            let value = self.computation_engine.parameter_preview(index);
-            let visual = value.visual(format!("{}: ", parameter.name));
+            if !self.parameter_widgets.contains_key(&parameter.id) {
+                let value = self.computation_engine.parameter_preview(index);
+                let visual = value.visual(format!("{}: ", parameter.name));
+                self.parameter_widgets.insert(parameter.id, Box::new(visual) as Box<dyn ValueWidget>);
+            }
+            let visual = &self.parameter_widgets[&parameter.id];
             y -= visual.size().height;
             visual.draw(Position { x: 0.0, y }, layer);
         }
