@@ -9,7 +9,7 @@ use super::{App, DragTarget};
 use crate::{
     engine::ParameterId,
     renderer::Position,
-    widgets::{EventResponse, Node, Socket, ValueWidget},
+    widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
 
 impl App {
@@ -45,9 +45,7 @@ impl App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.on_mouse_move(self.physical_pos_to_render_pos(position))
             }
-            WindowEvent::MouseInput { state, button, ..} => {
-                self.on_mouse_input(button, state)
-            }
+            WindowEvent::MouseInput { state, button, .. } => self.on_mouse_input(button, state),
             _ => (),
         }
     }
@@ -81,9 +79,10 @@ impl App {
         self.previous_mouse_pos = new_pos;
         if let Some(target) = &self.dragging {
             match target {
-                DragTarget::Parameter(param) => {
+                BoundingBoxKind::EditParameter(param) => {
                     self.drag_parameter(*param, d);
                 }
+                _ => (),
             }
         } else {
             self.update_hovering();
@@ -91,23 +90,18 @@ impl App {
     }
 
     fn update_hovering(&mut self) {
-        let Position { x, y } = self.previous_mouse_pos;
         self.hovering = None;
-        if x < self.preview_drawer_size {
-            let mut dist_from_top = self.render_engine.target_size().height - y;
-            for (index, parameter) in self.computation_engine.root_parameters().iter().enumerate() {
-                if !self.parameter_widgets.contains_key(&parameter.id) {
-                    let value = self.computation_engine.parameter_preview(index);
-                    let visual = value.visual(format!("{}: ", parameter.name));
-                    self.parameter_widgets.insert(parameter.id, Box::new(visual) as Box<dyn ValueWidget>);
-                }
-                let visual = &self.parameter_widgets[&parameter.id];
-                dist_from_top -= visual.size().height;
-                if dist_from_top <= 0.0 {
-                    self.hovering = Some(DragTarget::Parameter(parameter.id))
+        let mut candidate = &self.root_bbox;
+        'look_into_candidate: while let BoundingBoxKind::Parent(children) = &candidate.kind {
+            for child in children {
+                if child.contains(self.previous_mouse_pos) {
+                    candidate = child;
+                    continue 'look_into_candidate;
                 }
             }
+            return;
         }
+        self.hovering  = Some(candidate.kind.clone());
     }
 
     fn drag_parameter(&mut self, id: ParameterId, d: (f32, f32)) {

@@ -34,13 +34,6 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn visual(&self, label: String) -> SimpleValueWidget {
-        SimpleValueWidget {
-            label,
-            value: self.clone(),
-        }
-    }
-
     pub fn display(&self) -> String {
         if let &Value::Float(value) = self {
             util::pretty_format_number(value)
@@ -321,28 +314,11 @@ impl Engine {
 }
 
 pub struct Node {
-    operation: NodeOperation,
-    arguments: Vec<NodeId>,
+    pub operation: NodeOperation,
+    pub arguments: Vec<NodeId>,
 }
 
 impl Node {
-    pub fn visual(&self, engine: &Engine) -> widgets::Node {
-        let argument_names = self.operation.arg_names();
-        widgets::Node {
-            name: self.operation.name(),
-            sockets: self
-                .arguments
-                .iter()
-                .enumerate()
-                .map(|(index, &arg)| widgets::Socket {
-                    name: argument_names[index.min(argument_names.len() - 1)].to_owned(),
-                    node: engine[arg].visual(engine),
-                })
-                .rev()
-                .collect_vec(),
-        }
-    }
-
     pub fn collect_parameters(&self, engine: &Engine, into: &mut Vec<Parameter>) {
         if let &NodeOperation::Parameter(id) = &self.operation {
             into.push(Parameter {
@@ -398,7 +374,7 @@ impl NodeOperation {
         }
     }
 
-    fn arg_names(&self) -> &'static [&'static str] {
+    pub fn arg_names(&self) -> &'static [&'static str] {
         use NodeOperation::*;
         match self {
             Combination(op) => op.arg_names(),

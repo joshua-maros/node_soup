@@ -3,6 +3,7 @@ mod render;
 
 use std::collections::HashMap;
 
+use bytemuck::Zeroable;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton},
@@ -13,7 +14,7 @@ use winit::{
 use crate::{
     engine::{Engine, ParameterId},
     renderer::{Position, RenderEngine},
-    widgets::ValueWidget,
+    widgets::{BoundingBox, BoundingBoxKind, ValueWidget},
 };
 
 #[derive(Clone, Debug)]
@@ -28,9 +29,10 @@ pub struct App {
     computation_engine: Engine,
     preview_drawer_size: f32,
     parameter_widgets: HashMap<ParameterId, Box<dyn ValueWidget>>,
+    root_bbox: BoundingBox,
     previous_mouse_pos: Position,
-    hovering: Option<DragTarget>,
-    dragging: Option<DragTarget>,
+    hovering: Option<BoundingBoxKind>,
+    dragging: Option<BoundingBoxKind>,
 }
 
 impl App {
@@ -50,6 +52,11 @@ impl App {
             computation_engine,
             preview_drawer_size: 200.0,
             parameter_widgets: HashMap::new(),
+            root_bbox: BoundingBox::new_start_end(
+                Position::zeroed(),
+                Position::zeroed(),
+                BoundingBoxKind::Unused,
+            ),
             previous_mouse_pos: Position { x: 0.0, y: 0.0 },
             hovering: None,
             dragging: None,

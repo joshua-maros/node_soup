@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::{Add, Sub};
 
 use bytemuck::{Pod, Zeroable};
 use winit::dpi::PhysicalSize;
@@ -8,6 +8,21 @@ use winit::dpi::PhysicalSize;
 pub struct Position {
     pub x: f32,
     pub y: f32,
+}
+impl Position {
+    pub fn componentwise_min(&self, other: Position) -> Position {
+        Self {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+        }
+    }
+
+    pub fn componentwise_max(&self, other: Position) -> Position {
+        Self {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
+    }
 }
 
 #[repr(C)]
@@ -46,6 +61,19 @@ impl Add<Size> for Position {
         Position {
             x: self.x + rhs.width,
             y: self.y + rhs.height,
+        }
+    }
+}
+
+impl Sub for Position {
+    type Output = Size;
+
+    fn sub(self, rhs: Position) -> Self::Output {
+        assert!(self.x >= rhs.x);
+        assert!(self.y >= rhs.y);
+        Size {
+            width: self.x - rhs.x,
+            height: self.y - rhs.y,
         }
     }
 }
