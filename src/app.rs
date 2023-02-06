@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use winit::{
     dpi::PhysicalSize,
+    event::{ElementState, MouseButton},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -15,8 +16,9 @@ use crate::{
     visuals::ValueWidget,
 };
 
+#[derive(Clone, Debug)]
 pub enum DragTarget {
-    Parameter(ParameterId)
+    Parameter(ParameterId),
 }
 
 pub struct App {
@@ -61,5 +63,25 @@ impl App {
             self.on_event(event);
             *control_flow = self.control_flow;
         });
+    }
+
+    fn on_mouse_input(&mut self, button: MouseButton, state: ElementState) {
+        match state {
+            ElementState::Pressed => self.on_mouse_down(button),
+            ElementState::Released => self.on_mouse_up(button),
+        }
+    }
+
+    fn on_mouse_down(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            self.dragging = self.hovering.clone();
+            println!("{:#?}", self.dragging);
+        }
+    }
+
+    fn on_mouse_up(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            self.dragging = None;
+        }
     }
 }

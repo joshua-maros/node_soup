@@ -45,6 +45,9 @@ impl App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.on_mouse_move(self.physical_pos_to_render_pos(position))
             }
+            WindowEvent::MouseInput { state, button, ..} => {
+                self.on_mouse_input(button, state)
+            }
             _ => (),
         }
     }
