@@ -6,8 +6,8 @@ use wgpu::{
 };
 
 use super::{
-    clear::clear, render_rects::render_rects, render_text::render_text, ActiveRenderInfo,
-    MutableResources, ReadOnlyResources, RenderEngine,
+    clear::clear, render_icons::render_icons, render_rects::render_rects, render_text::render_text,
+    ActiveRenderInfo, MutableResources, ReadOnlyResources, RenderEngine,
 };
 use crate::{
     renderer::{fonts::Fonts, shapes::Shapes, vertex_data::RECT_VERTS_LEN},
@@ -31,6 +31,7 @@ impl RenderEngine {
             };
             render_rects(&self.ror, &mut info);
             render_text(&self.ror, &mut self.mr, &mut info);
+            render_icons(&self.ror, &mut info);
         }
         finish_rendering(&self.ror, &mut self.mr, encoder, target);
         Ok(())

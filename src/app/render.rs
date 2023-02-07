@@ -10,7 +10,7 @@ use crate::{
     renderer::{
         Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
-        RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
+        RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT, IconInstance,
     },
     theme::{
         FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
@@ -41,6 +41,11 @@ impl App {
             x = bbox.end.x;
             bboxes.push(bbox);
         }
+        base_layer.push_icon(IconInstance {
+            position: [0.0, 0.0],
+            size: 128.0,
+            index: 1,
+        });
         self.root_bbox = BoundingBox::new_from_children(bboxes);
 
         let layers = [&base_layer];

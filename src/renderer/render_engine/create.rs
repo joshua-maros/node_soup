@@ -1,15 +1,108 @@
-use wgpu::util::StagingBelt;
+use std::num::NonZeroU32;
+
+use wgpu::{
+    util::StagingBelt, AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry,
+    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
+    Extent3d, FilterMode, ImageCopyTexture, ImageDataLayout, Origin3d, SamplerBindingType,
+    SamplerDescriptor, ShaderStages, TextureAspect, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension,
+};
 use winit::window::Window;
 
 use super::{MutableResources, ReadOnlyResources, RenderEngine};
 use crate::renderer::{
     coordinates::Size,
     fonts::Fonts,
+    icon_data::IconInstance,
     pipeline_util::{create_render_pipeline, create_shader},
     rect_data::RectInstance,
+    render_device::RenderDevice,
     render_target::RenderTarget,
     vertex_data::{create_rect_verts_buffer, Vertex},
 };
+
+fn create_icon_texture(device: &RenderDevice) -> (BindGroupLayout, BindGroup) {
+    let image = image::load_from_memory(include_bytes!("icons.png")).unwrap();
+    let image = image.to_luma8();
+    let texture_size = Extent3d {
+        width: 2048,
+        height: 2048,
+        ..Default::default()
+    };
+    let desc = TextureDescriptor {
+        label: Some("Icon Texture"),
+        size: texture_size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: TextureFormat::R8Unorm,
+        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+    };
+    let texture = device.device().create_texture(&desc);
+    device.queue().write_texture(
+        ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: Origin3d::ZERO,
+            aspect: TextureAspect::All,
+        },
+        &image,
+        ImageDataLayout {
+            offset: 0,
+            bytes_per_row: NonZeroU32::new(2048),
+            rows_per_image: NonZeroU32::new(2048),
+        },
+        texture_size,
+    );
+    let texture_view = texture.create_view(&TextureViewDescriptor::default());
+    let texture_sampler = device.device().create_sampler(&SamplerDescriptor {
+        address_mode_u: AddressMode::ClampToEdge,
+        address_mode_v: AddressMode::ClampToEdge,
+        address_mode_w: AddressMode::ClampToEdge,
+        mag_filter: FilterMode::Linear,
+        min_filter: FilterMode::Nearest,
+        mipmap_filter: FilterMode::Nearest,
+        ..Default::default()
+    });
+    let desc = BindGroupLayoutDescriptor {
+        label: Some("Icon Texture Bind Group Layout"),
+        entries: &[
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Texture {
+                    sample_type: TextureSampleType::Float { filterable: true },
+                    view_dimension: TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            BindGroupLayoutEntry {
+                binding: 2,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    };
+    let texture_bind_group_layout = device.device().create_bind_group_layout(&desc);
+    let desc = BindGroupDescriptor {
+        label: Some("Icon Texture Bind Group"),
+        layout: &texture_bind_group_layout,
+        entries: &[
+            BindGroupEntry {
+                binding: 1,
+                resource: BindingResource::TextureView(&texture_view),
+            },
+            BindGroupEntry {
+                binding: 2,
+                resource: BindingResource::Sampler(&texture_sampler),
+            },
+        ],
+    };
+    let texture_bind_group = device.device().create_bind_group(&desc);
+    (texture_bind_group_layout, texture_bind_group)
+}
 
 impl RenderEngine {
     pub async fn new_for_window(window: &Window) -> Self {
@@ -24,6 +117,17 @@ impl RenderEngine {
             &device,
             &target,
         );
+        let (icon_texture_bind_group_layout, icon_texture_bind_group) =
+            create_icon_texture(&device);
+        let icon_shader = create_shader("Icon Shader", include_str!("icon_shader.wgsl"), &device);
+        let icon_pipeline = create_render_pipeline(
+            "Icon Pipeline",
+            &icon_shader,
+            &[target.surface_geometry_bind_group_layout(), &icon_texture_bind_group_layout],
+            &[Vertex::desc(), IconInstance::desc()],
+            &device,
+            &target,
+        );
         let staging_belt = StagingBelt::new(1024);
         let fonts = Fonts::new(&device, &target);
         Self {
@@ -32,6 +136,8 @@ impl RenderEngine {
                 target,
                 rect_verts,
                 rect_pipeline,
+                icon_pipeline,
+                icon_texture_bind_group,
             },
             mr: MutableResources {
                 staging_belt,

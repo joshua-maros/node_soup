@@ -3,8 +3,9 @@ mod render;
 mod render_rects;
 mod render_text;
 mod clear;
+mod render_icons;
 
-use wgpu::{util::StagingBelt, Buffer, RenderPipeline, TextureView, CommandEncoder};
+use wgpu::{util::StagingBelt, Buffer, RenderPipeline, TextureView, CommandEncoder, BindGroup};
 
 use super::{fonts::Fonts, render_device::RenderDevice, render_target::RenderTarget, Shapes};
 
@@ -13,6 +14,8 @@ struct ReadOnlyResources {
     target: RenderTarget,
     rect_verts: Buffer,
     rect_pipeline: RenderPipeline,
+    icon_pipeline: RenderPipeline,
+    icon_texture_bind_group: BindGroup,
 }
 
 struct MutableResources {
