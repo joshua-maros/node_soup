@@ -8,8 +8,8 @@ use crate::{
         RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
-        NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEADER_HEIGHT, NODE_INNER_CORNER_SIZE, NODE_MIN_WIDTH,
-        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING, 
+        NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_WIDTH,
+        NODE_CORNER_SIZE, NODE_OUTLINE, NODE_PARAMETER_PADDING, 
     },
 };
 
@@ -84,8 +84,8 @@ impl Node {
     pub fn size(&self) -> Size {
         if self.sockets.len() == 0 {
             Size {
-                width: NODE_MIN_WIDTH,
-                height: NODE_HEADER_HEIGHT,
+                width: NODE_WIDTH,
+                height: NODE_HEIGHT,
             }
         } else {
             let socket_child_sizes = self.sockets.iter().map(Socket::size);
@@ -94,10 +94,10 @@ impl Node {
                 height: prev.height + next.height,
             });
             Size {
-                width: size_from_children.width + NODE_PADDING + NODE_GUTTER_WIDTH,
+                width: size_from_children.width + NODE_PARAMETER_PADDING + NODE_GUTTER_WIDTH,
                 height: size_from_children.height
-                    + (self.sockets.len() as f32 + 0.5) * NODE_PADDING
-                    + NODE_HEADER_HEIGHT,
+                    + (self.sockets.len() as f32 + 0.5) * NODE_PARAMETER_PADDING
+                    + NODE_HEIGHT,
             }
         }
     }
@@ -136,8 +136,8 @@ pub trait ValueWidget {
 impl ValueWidget for SimpleValueWidget {
     fn size(&self) -> Size {
         Size {
-            width: NODE_MIN_WIDTH,
-            height: NODE_HEADER_HEIGHT,
+            width: NODE_WIDTH,
+            height: NODE_HEIGHT,
         }
     }
 

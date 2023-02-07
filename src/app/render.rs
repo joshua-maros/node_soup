@@ -13,8 +13,8 @@ use crate::{
         RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
-        NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEADER_HEIGHT, NODE_INNER_CORNER_SIZE, NODE_MIN_WIDTH,
-        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING,
+        INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH,
+        NODE_HEIGHT, NODE_LABEL_PADDING, NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -29,7 +29,7 @@ impl App {
         while editor_nodes.len() > 0 {
             let (bbox, next_nodes) = self.render_node_editor(
                 Position {
-                    x: x + NODE_PADDING,
+                    x: x + INTER_PANEL_PADDING,
                     y: 0.0,
                 },
                 &mut base_layer,
@@ -100,10 +100,10 @@ impl App {
         for (name, node) in nodes {
             let node_bbox = self.render_node(Position { x: start.x, y }, layer, node);
             let x = start.x;
-            y = node_bbox.end.y + NODE_PADDING;
+            y = node_bbox.end.y + INTER_NODE_PADDING;
             layer.push_rect(RectInstance {
                 position: [x, y],
-                size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+                size: [NODE_WIDTH, NODE_HEIGHT],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: TOP_OUTLINE_FLAT
@@ -113,12 +113,12 @@ impl App {
             });
             layer.push_text(Text {
                 sections: vec![Section::node_label(name)],
-                center: [x + NODE_MIN_WIDTH / 2.0, y + NODE_HEADER_HEIGHT / 2.0],
-                bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+                center: [x + NODE_WIDTH / 2.0, y + NODE_HEIGHT / 2.0],
+                bounds: [NODE_WIDTH, NODE_HEIGHT],
                 horizontal_align: HorizontalAlign::Center,
                 vertical_align: VerticalAlign::Center,
             });
-            y += NODE_HEADER_HEIGHT + NODE_PADDING;
+            y += NODE_HEIGHT + INTER_PANEL_PADDING;
             bboxes.push(node_bbox);
         }
         next_column_nodes.reverse();
@@ -130,8 +130,8 @@ impl App {
         let Position { x, y } = start;
         let mut label = Text {
             sections: vec![Section::node_label(node.operation.name())],
-            center: [x + NODE_PADDING, y + NODE_HEADER_HEIGHT / 2.0],
-            bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+            center: [x + NODE_LABEL_PADDING, y + NODE_HEIGHT / 2.0],
+            bounds: [NODE_WIDTH, NODE_HEIGHT],
             horizontal_align: HorizontalAlign::Left,
             vertical_align: VerticalAlign::Center,
         };
@@ -139,25 +139,33 @@ impl App {
         let mut bboxes = Vec::new();
         if let Some(input) = node.input {
             let bbox = self.render_node(start, layer, input);
-            y = bbox.end.y + NODE_PADDING;
+            y = bbox.end.y + INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
         if self.selected_nodes.contains(&node_id) {
+            let bottom = y;
             let parameters = node.collect_parameters(&self.computation_engine);
             for (index, _) in node.arguments.iter().enumerate().rev() {
                 let start = Position {
-                    x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
+                    x: x + NODE_GUTTER_WIDTH + NODE_PARAMETER_PADDING,
                     y,
                 };
                 let label = node.operation.param_name(index, &parameters);
                 let param_bbox = render_parameter(start, layer, label);
-                y = param_bbox.end.y + NODE_PADDING;
+                y = param_bbox.end.y + NODE_PARAMETER_PADDING;
                 bboxes.push(param_bbox);
             }
+            layer.push_rect(RectInstance {
+                position: [start.x, bottom],
+                size: [NODE_GUTTER_WIDTH, y - bottom],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+            });
         }
         layer.push_rect(RectInstance {
             position: [x, y],
-            size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+            size: [NODE_WIDTH, NODE_HEIGHT],
             fill_color: NODE_FILL,
             outline_color: NODE_OUTLINE,
             outline_modes: LEFT_OUTLINE_FLAT
@@ -165,10 +173,10 @@ impl App {
                 | TOP_OUTLINE_FLAT
                 | BOTTOM_OUTLINE_FLAT,
         });
-        label.center[1] = y + NODE_HEADER_HEIGHT / 2.0;
+        label.center[1] = y + NODE_HEIGHT / 2.0;
         let end = Position {
-            x: x + NODE_MIN_WIDTH,
-            y: y + NODE_HEADER_HEIGHT,
+            x: x + NODE_WIDTH,
+            y: y + NODE_HEIGHT,
         };
         let kind = self.default_node_bbox_kind(node_id, &node.operation);
         bboxes.push(BoundingBox::new_start_end(Position { x, y }, end, kind));
@@ -187,8 +195,8 @@ impl App {
 }
 
 fn render_parameter(start: Position, layer: &mut Shapes, name: &str) -> BoundingBox {
-    let width = NODE_MIN_WIDTH - NODE_PADDING - NODE_GUTTER_WIDTH;
-    let height = NODE_HEADER_HEIGHT;
+    let width = NODE_WIDTH - NODE_PARAMETER_PADDING - NODE_GUTTER_WIDTH;
+    let height = NODE_HEIGHT;
     let kind = BoundingBoxKind::Unused;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -202,8 +210,8 @@ fn render_parameter(start: Position, layer: &mut Shapes, name: &str) -> Bounding
     });
     layer.push_text(Text {
         sections: vec![Section::node_label(name.to_owned())],
-        center: [start.x + NODE_PADDING, start.y + height / 2.0],
-        bounds: [width - 2.0 * NODE_PADDING, height],
+        center: [start.x + NODE_LABEL_PADDING, start.y + height / 2.0],
+        bounds: [width - 2.0 * NODE_LABEL_PADDING, height],
         horizontal_align: HorizontalAlign::Left,
         vertical_align: VerticalAlign::Center,
     });
@@ -228,8 +236,8 @@ fn render_value_preview_helper(
     bbox_kind: BoundingBoxKind,
 ) -> BoundingBox {
     let size = Size {
-        width: NODE_MIN_WIDTH,
-        height: NODE_HEADER_HEIGHT,
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
     };
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -246,7 +254,10 @@ fn render_value_preview_helper(
             Section::node_label(label.clone()),
             Section::node_label(value.display()),
         ],
-        center: [start.x + NODE_PADDING, start.y + size.height / 2.0],
+        center: [
+            start.x + NODE_PARAMETER_PADDING,
+            start.y + size.height / 2.0,
+        ],
         bounds: [size.width, size.height],
         horizontal_align: HorizontalAlign::Left,
         vertical_align: VerticalAlign::Center,
