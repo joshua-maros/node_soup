@@ -103,7 +103,6 @@ impl App {
             return;
         }
         self.hovering = Some(candidate.kind.clone());
-        println!("{:#?}", self.hovering);
     }
 
     fn drag_tool(&mut self, tool: ToolId, target: NodeId, d: (f32, f32)) {

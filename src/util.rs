@@ -8,11 +8,11 @@ pub fn pretty_format_number(number: f32) -> String {
     } else {
         let mut number = number;
         let mut power = 0;
-        while number >= 1000.0 {
+        while number.abs() >= 1000.0 {
             power += 1;
             number /= 1000.0;
         }
-        while number < 0.01 {
+        while number.abs() < 0.01 {
             power -= 1;
             number *= 1000.0;
         }

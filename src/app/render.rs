@@ -6,7 +6,7 @@ use winit::event_loop::ControlFlow;
 
 use super::App;
 use crate::{
-    engine::{Node, NodeId, Parameter, ParameterId, Value},
+    engine::{Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Value},
     renderer::{
         Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
@@ -14,8 +14,7 @@ use crate::{
     },
     theme::{
         NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEADER_HEIGHT, NODE_INNER_CORNER_SIZE, NODE_MIN_WIDTH,
-        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING, PARAMETER_LABEL_COLOR,
-        PARAMETER_LABEL_SIZE,
+        NODE_OUTER_CORNER_SIZE, NODE_OUTLINE, NODE_PADDING,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -45,7 +44,7 @@ impl App {
             x: self.preview_drawer_size,
             y: 0.0,
         };
-        self.render_node(pos, layer, self.computation_engine.root_node(), "Root")
+        self.render_node_stack(pos, layer, self.computation_engine.root_node(), "Root")
     }
 
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
@@ -63,194 +62,127 @@ impl App {
         BoundingBox::new_from_children(bboxes)
     }
 
-    fn render_node(
+    fn render_node_stack(
         &self,
         start: Position,
         layer: &mut Shapes,
         node_id: NodeId,
-        label: &str,
+        output_label: &str,
     ) -> BoundingBox {
+        let node_bbox = self.render_node(start, layer, node_id);
+        let x = start.x;
+        let y = node_bbox.end.y + NODE_PADDING;
+        layer.push_rect(RectInstance {
+            position: [x, y],
+            size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+            fill_color: NODE_FILL,
+            outline_color: NODE_OUTLINE,
+            outline_modes: TOP_OUTLINE_FLAT
+                | BOTTOM_OUTLINE_FLAT
+                | LEFT_OUTLINE_FLAT
+                | RIGHT_OUTLINE_FLAT,
+        });
+        layer.push_text(Text {
+            sections: vec![Section::node_label(output_label.to_owned())],
+            center: [x + NODE_MIN_WIDTH / 2.0, y + NODE_HEADER_HEIGHT / 2.0],
+            bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+            horizontal_align: HorizontalAlign::Center,
+            vertical_align: VerticalAlign::Center,
+        });
+        node_bbox
+    }
+
+    fn render_node(&self, start: Position, layer: &mut Shapes, node_id: NodeId) -> BoundingBox {
         let node = &self.computation_engine[node_id];
         let Position { x, y } = start;
         let mut label = Text {
-            sections: if label.len() > 0 {
-                vec![
-                    Section::parameter_label(format!("{}: ", label)),
-                    Section::node_label(node.operation.name()),
-                ]
-            } else {
-                vec![Section::node_label(node.operation.name())]
-            },
+            sections: vec![Section::node_label(node.operation.name())],
             center: [x + NODE_PADDING, y + NODE_HEADER_HEIGHT / 2.0],
             bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
             horizontal_align: HorizontalAlign::Left,
             vertical_align: VerticalAlign::Center,
         };
         let mut y = y;
+        let mut bboxes = Vec::new();
         if let Some(input) = node.input {
-            let bbox = self.render_node(start, layer, input, "");
+            let bbox = self.render_node(start, layer, input);
             y = bbox.end.y + NODE_PADDING;
+            bboxes.push(bbox);
         }
-        let bbox = if node.arguments.len() == 0 {
-            layer.push_rect(RectInstance {
-                position: [x, y],
-                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: BOTTOM_OUTLINE_FLAT
-                    | LEFT_OUTLINE_ANTIDIAGONAL
-                    | RIGHT_OUTLINE_DIAGONAL,
-            });
-            layer.push_rect(RectInstance {
-                position: [x, y + NODE_OUTER_CORNER_SIZE],
-                size: [
-                    NODE_MIN_WIDTH,
-                    NODE_HEADER_HEIGHT - 2.0 * NODE_OUTER_CORNER_SIZE,
-                ],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
-            });
-            layer.push_rect(RectInstance {
-                position: [x, y + NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE],
-                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: TOP_OUTLINE_FLAT
-                    | LEFT_OUTLINE_DIAGONAL
-                    | RIGHT_OUTLINE_ANTIDIAGONAL,
-            });
-            let size = Size {
-                width: NODE_MIN_WIDTH,
-                height: NODE_HEADER_HEIGHT,
-            };
-            let kind = BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, node_id);
-            BoundingBox::new_start_size(start, size, kind)
-        } else {
-            let arg_names = node.operation.arg_names();
-            let mut arg_bboxes = Vec::new();
-            for (index, arg) in node.arguments.iter().enumerate().rev() {
-                let top = index == 0;
-                let bottom = index == node.arguments.len() - 1;
+        if let NodeOperation::ReuseNode(..) = node.operation {
+            for parameter in node
+                .collect_parameters(&self.computation_engine)
+                .iter()
+                .rev()
+            {
                 let start = Position {
                     x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
-                    y: y + 0.5 * NODE_PADDING,
+                    y,
                 };
-                let label = arg_names[index.min(arg_names.len() - 1)];
-                let arg_bbox = self.render_node(start, layer, *arg, label);
-                let height = arg_bbox.size().height + if top { 1.5 } else { 1.0 } * NODE_PADDING;
-                arg_bboxes.push(arg_bbox);
-                if bottom {
-                    layer.push_rect(RectInstance {
-                        position: [x, y],
-                        size: [
-                            NODE_GUTTER_WIDTH + NODE_OUTER_CORNER_SIZE,
-                            NODE_OUTER_CORNER_SIZE,
-                        ],
-                        fill_color: NODE_FILL,
-                        outline_color: NODE_OUTLINE,
-                        outline_modes: BOTTOM_OUTLINE_FLAT
-                            | LEFT_OUTLINE_ANTIDIAGONAL
-                            | RIGHT_OUTLINE_ANTIDIAGONAL,
-                    });
-                    layer.push_rect(RectInstance {
-                        position: [x, y + NODE_OUTER_CORNER_SIZE],
-                        size: [
-                            NODE_GUTTER_WIDTH,
-                            height - NODE_OUTER_CORNER_SIZE - NODE_INNER_CORNER_SIZE,
-                        ],
-                        fill_color: NODE_FILL,
-                        outline_color: NODE_OUTLINE,
-                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
-                    });
-                } else {
-                    layer.push_rect(RectInstance {
-                        position: [x, y],
-                        size: [
-                            NODE_GUTTER_WIDTH + NODE_INNER_CORNER_SIZE,
-                            NODE_INNER_CORNER_SIZE,
-                        ],
-                        fill_color: NODE_FILL,
-                        outline_color: NODE_OUTLINE,
-                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_ANTIDIAGONAL,
-                    });
-                    layer.push_rect(RectInstance {
-                        position: [x, y + NODE_INNER_CORNER_SIZE],
-                        size: [NODE_GUTTER_WIDTH, height - 2.0 * NODE_INNER_CORNER_SIZE],
-                        fill_color: NODE_FILL,
-                        outline_color: NODE_OUTLINE,
-                        outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
-                    });
-                }
-                layer.push_rect(RectInstance {
-                    position: [x, y + height - NODE_INNER_CORNER_SIZE],
-                    size: [
-                        NODE_GUTTER_WIDTH + NODE_INNER_CORNER_SIZE,
-                        NODE_INNER_CORNER_SIZE,
-                    ],
-                    fill_color: NODE_FILL,
-                    outline_color: NODE_OUTLINE,
-                    outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_DIAGONAL,
-                });
-                y += height;
+                let param_bbox = render_parameter(start, layer, &parameter.name);
+                y = param_bbox.end.y + NODE_PADDING;
+                bboxes.push(param_bbox);
             }
-            let skip = NODE_GUTTER_WIDTH + NODE_INNER_CORNER_SIZE;
-            layer.push_rect(RectInstance {
-                position: [x, y],
-                size: [skip, NODE_OUTER_CORNER_SIZE],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: LEFT_OUTLINE_FLAT,
-            });
-            layer.push_rect(RectInstance {
-                position: [x + skip, y],
-                size: [NODE_MIN_WIDTH - skip, NODE_OUTER_CORNER_SIZE],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: BOTTOM_OUTLINE_FLAT | RIGHT_OUTLINE_DIAGONAL,
-            });
-            layer.push_rect(RectInstance {
-                position: [x, y + NODE_OUTER_CORNER_SIZE],
-                size: [
-                    NODE_MIN_WIDTH,
-                    NODE_HEADER_HEIGHT - 2.0 * NODE_OUTER_CORNER_SIZE,
-                ],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT,
-            });
-            layer.push_rect(RectInstance {
-                position: [x, y + NODE_HEADER_HEIGHT - NODE_OUTER_CORNER_SIZE],
-                size: [NODE_MIN_WIDTH, NODE_OUTER_CORNER_SIZE],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
-                outline_modes: TOP_OUTLINE_FLAT
-                    | LEFT_OUTLINE_DIAGONAL
-                    | RIGHT_OUTLINE_ANTIDIAGONAL,
-            });
-            label.center[1] = y + NODE_HEADER_HEIGHT / 2.0;
-            let end = Position {
-                x: x + NODE_MIN_WIDTH,
-                y: y + NODE_HEADER_HEIGHT,
-            };
-            let kind = BoundingBoxKind::Parent(arg_bboxes);
-            BoundingBox::new_start_end(start, end, kind)
+        } else {
+            let param_names = node.operation.param_names();
+            for (index, _) in node.arguments.iter().enumerate().rev() {
+                let start = Position {
+                    x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
+                    y,
+                };
+                let label = param_names[index.min(param_names.len() - 1)];
+                let param_bbox = render_parameter(start, layer, label);
+                y = param_bbox.end.y + NODE_PADDING;
+                bboxes.push(param_bbox);
+            }
+        }
+        layer.push_rect(RectInstance {
+            position: [x, y],
+            size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+            fill_color: NODE_FILL,
+            outline_color: NODE_OUTLINE,
+            outline_modes: LEFT_OUTLINE_FLAT
+                | RIGHT_OUTLINE_FLAT
+                | TOP_OUTLINE_FLAT
+                | BOTTOM_OUTLINE_FLAT,
+        });
+        label.center[1] = y + NODE_HEADER_HEIGHT / 2.0;
+        let end = Position {
+            x: x + NODE_MIN_WIDTH,
+            y: y + NODE_HEADER_HEIGHT,
         };
+        bboxes.push(BoundingBox::new_start_end(
+            Position { x, y },
+            end,
+            BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, node_id),
+        ));
         layer.push_text(label);
-        bbox
+        BoundingBox::new_from_children(bboxes)
     }
 }
 
-fn render_parameter_preview(
-    start: Position,
-    layer: &mut Shapes,
-    parameter: &Parameter,
-    value: &Value,
-) -> BoundingBox {
-    // let bbox_kind = BoundingBoxKind::EditParameter(parameter.id);
-    // render_value_preview_helper(start, layer, parameter.name.clone(), value,
-    // bbox_kind)
-    todo!()
+fn render_parameter(start: Position, layer: &mut Shapes, name: &str) -> BoundingBox {
+    let width = NODE_MIN_WIDTH - NODE_PADDING - NODE_GUTTER_WIDTH;
+    let height = NODE_HEADER_HEIGHT;
+    let kind = BoundingBoxKind::Unused;
+    layer.push_rect(RectInstance {
+        position: [start.x, start.y],
+        size: [width, height],
+        fill_color: NODE_FILL,
+        outline_color: NODE_OUTLINE,
+        outline_modes: LEFT_OUTLINE_FLAT
+            | RIGHT_OUTLINE_FLAT
+            | TOP_OUTLINE_FLAT
+            | BOTTOM_OUTLINE_FLAT,
+    });
+    layer.push_text(Text {
+        sections: vec![Section::node_label(name.to_owned())],
+        center: [start.x + NODE_PADDING, start.y + height / 2.0],
+        bounds: [width - 2.0 * NODE_PADDING, height],
+        horizontal_align: HorizontalAlign::Left,
+        vertical_align: VerticalAlign::Center,
+    });
+    BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
 fn render_output_preview(
@@ -286,7 +218,7 @@ fn render_value_preview_helper(
     });
     layer.push_text(Text {
         sections: vec![
-            Section::parameter_label(label.clone()),
+            Section::node_label(label.clone()),
             Section::node_label(value.display()),
         ],
         center: [start.x + NODE_PADDING, start.y + size.height / 2.0],

@@ -3,7 +3,7 @@ use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
 
 use super::fonts::FONT_LIGHT;
 use crate::theme::{
-    NODE_LABEL_COLOR, NODE_LABEL_SIZE, PARAMETER_LABEL_COLOR, PARAMETER_LABEL_SIZE,
+    NODE_LABEL_COLOR, NODE_LABEL_SIZE, 
 };
 
 #[derive(Clone, Debug)]
@@ -41,15 +41,6 @@ pub struct Section {
 }
 
 impl Section {
-    pub fn parameter_label(text: String) -> Self {
-        Self {
-            text,
-            color: PARAMETER_LABEL_COLOR,
-            size: PARAMETER_LABEL_SIZE,
-            style: 0,
-        }
-    }
-
     pub fn node_label(text: String) -> Self {
         Self {
             text,

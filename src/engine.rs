@@ -230,7 +230,7 @@ impl Engine {
             input_parameter_for_reused_nodes,
         };
         let builtins = this.make_builtins();
-        // this.setup_demo(&builtins);
+        this.setup_demo(&builtins);
         (this, builtins)
     }
 
@@ -257,18 +257,23 @@ impl Engine {
             let input = self.push_simple_input(0.0.into());
             let mouse_offset = mouse_offset.1;
             let dx = self.push_get_component(mouse_offset, "X");
-            let with_x = self.push_node(Node {
-                operation: NodeOperation::Basic(BasicOp::Add),
-                input: Some(input),
-                arguments: vec![dx],
-            });
             let dy = self.push_get_component(mouse_offset, "Y");
-            let with_x_and_y = self.push_node(Node {
+            let dx_plus_dy = self.push_node(Node {
                 operation: NodeOperation::Basic(BasicOp::Add),
-                input: Some(with_x),
+                input: Some(dx),
                 arguments: vec![dy],
             });
-            with_x_and_y
+            let scale = self.push_literal_node(0.01.into());
+            let delta = self.push_node(Node {
+                operation: NodeOperation::Basic(BasicOp::Multiply),
+                input: Some(dx_plus_dy),
+                arguments: vec![scale],
+            });
+            self.push_node(Node {
+                operation: NodeOperation::Basic(BasicOp::Add),
+                input: Some(input),
+                arguments: vec![delta],
+            })
         };
         let adjust_float_tool = self.add_tool(Tool {
             target_prototype: prototype,
@@ -547,7 +552,7 @@ impl NodeOperation {
         }
     }
 
-    pub fn arg_names(&self) -> &'static [&'static str] {
+    pub fn param_names(&self) -> &'static [&'static str] {
         use NodeOperation::*;
         match self {
             Literal(..) => &[],
@@ -582,7 +587,10 @@ impl BasicOp {
 
     fn arg_names(&self) -> &'static [&'static str] {
         match self {
-            _ => &[""],
+            Add => &["Offset"],
+            Subtract => &["Offset"],
+            Multiply => &["Factor"],
+            Divide => &["Divisor"],
         }
     }
 
