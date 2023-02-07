@@ -12,7 +12,7 @@ use winit::{
 };
 
 use crate::{
-    engine::{Engine, ParameterId},
+    engine::{Engine, ParameterId, BuiltinDefinitions},
     renderer::{Position, RenderEngine},
     widgets::{BoundingBox, BoundingBoxKind, ValueWidget},
 };
@@ -27,6 +27,7 @@ pub struct App {
     render_engine: RenderEngine,
     control_flow: ControlFlow,
     computation_engine: Engine,
+    builtins: BuiltinDefinitions,
     preview_drawer_size: f32,
     parameter_widgets: HashMap<ParameterId, Box<dyn ValueWidget>>,
     root_bbox: BoundingBox,
@@ -43,13 +44,14 @@ impl App {
             .build(&event_loop)
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
-        let computation_engine = Engine::new();
+        let (computation_engine, builtins) = Engine::new();
         App {
             window,
             render_engine,
             // This is overwritten whenever an event is received anyway.
             control_flow: ControlFlow::Wait,
             computation_engine,
+            builtins,
             preview_drawer_size: 200.0,
             parameter_widgets: HashMap::new(),
             root_bbox: BoundingBox::new_start_end(

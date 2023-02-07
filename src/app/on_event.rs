@@ -1,3 +1,4 @@
+use maplit::hashmap;
 use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalPosition,
@@ -7,7 +8,7 @@ use winit::{
 
 use super::{App, DragTarget};
 use crate::{
-    engine::{ParameterId, Value},
+    engine::{NodeId, ParameterId, ToolId, Value},
     renderer::Position,
     widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
@@ -79,8 +80,8 @@ impl App {
         self.previous_mouse_pos = new_pos;
         if let Some(target) = &self.dragging {
             match target {
-                BoundingBoxKind::EditParameter(param) => {
-                    self.drag_parameter(*param, d);
+                &BoundingBoxKind::InvokeTool(tool_id, target_node) => {
+                    self.drag_tool(tool_id, target_node, d);
                 }
                 _ => (),
             }
@@ -102,13 +103,27 @@ impl App {
             return;
         }
         self.hovering = Some(candidate.kind.clone());
+        println!("{:#?}", self.hovering);
     }
 
-    fn drag_parameter(&mut self, id: ParameterId, d: (f32, f32)) {
-        let value = self.computation_engine.parameter_preview_mut(id);
-        if let Value::Float(value) = value {
-            let d = d.0 + d.1;
-            *value += d;
-        }
+    fn drag_tool(&mut self, tool: ToolId, target: NodeId, d: (f32, f32)) {
+        let target_value = self.computation_engine[target].as_literal().clone();
+        let encoded_delta = self.computation_engine[self.builtins.compose_vector_2d].evaluate(
+            &self.computation_engine,
+            &hashmap![
+                self.builtins.x_component => d.0.into(),
+                self.builtins.y_component => d.1.into()
+            ],
+        );
+        let tool = self.computation_engine.get_tool(tool);
+        let new_value = self.computation_engine[tool.mouse_drag_handler].evaluate(
+            &self.computation_engine,
+            &hashmap![
+                self.computation_engine.input_parameter_for_reused_nodes => target_value,
+                self.builtins.mouse_offset.0 => encoded_delta,
+            ],
+        );
+        let target = &mut self.computation_engine[target];
+        *target.as_literal_mut() = new_value;
     }
 }

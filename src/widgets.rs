@@ -1,7 +1,7 @@
 use wgpu_glyph::{HorizontalAlign, VerticalAlign};
 
 use crate::{
-    engine::{ParameterId, Value},
+    engine::{ParameterId, Value, ToolId, NodeId},
     renderer::{
         Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub enum BoundingBoxKind {
-    EditParameter(ParameterId),
+    InvokeTool(ToolId, NodeId),
     Parent(Vec<BoundingBox>),
     Unused,
 }

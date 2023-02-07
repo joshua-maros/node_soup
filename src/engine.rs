@@ -14,11 +14,20 @@ use crate::{
     widgets::{self, SimpleValueWidget},
 };
 
-pub struct Parameter {
+pub struct Parameter {}
+
+pub struct ParameterDescription {
     pub id: ParameterId,
     pub name: String,
-    pub r#type: Option<BuiltinType>,
+    pub default: Value,
 }
+
+pub struct Tool {
+    pub target_prototype: NodeId,
+    pub mouse_drag_handler: NodeId,
+}
+
+pub type ToolId = Id<Tool>;
 
 #[derive(Clone, Debug)]
 pub enum Value {
@@ -26,11 +35,12 @@ pub enum Value {
     Integer(i32),
     Float(f32),
     String(String),
-    Type(BuiltinType),
+    Struct {
+        name: String,
+        components: HashMap<String, Value>,
+    },
     // Division by zero, index out of bounds, etc.
     Invalid,
-    // Depends on a parameter for which a value was not provided.
-    Free,
 }
 
 impl Value {
@@ -44,12 +54,6 @@ impl Value {
                 .unwrap()
                 .clone()
         }
-    }
-}
-
-impl From<BuiltinType> for Value {
-    fn from(v: BuiltinType) -> Self {
-        Self::Type(v)
     }
 }
 
@@ -78,14 +82,6 @@ impl From<bool> for Value {
 }
 
 impl Value {
-    pub fn as_type(&self) -> Option<BuiltinType> {
-        if let &Self::Type(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
     pub fn r#type(&self) -> BuiltinType {
         use BuiltinType::*;
         match self {
@@ -93,7 +89,6 @@ impl Value {
             Self::Integer(..) => Integer,
             Self::Float(..) => Float,
             Self::String(..) => String,
-            Self::Type(..) => Type,
             _ => todo!("{:#?}", self),
         }
     }
@@ -124,10 +119,6 @@ impl Value {
                 String => Some(value.clone().into()),
                 Type => None,
                 _ => todo!(),
-            },
-            &Self::Type(r#type) => match to {
-                Type => Some(r#type.into()),
-                _ => None,
             },
             _ => todo!(),
         }
@@ -187,12 +178,20 @@ pub type ParameterId = Id<Parameter>;
 
 pub struct Engine {
     nodes: HashMap<NodeId, Node>,
-    parameter_nodes: HashMap<ParameterId, NodeId>,
-    parameter_preview_values: HashMap<ParameterId, Value>,
     root_node: NodeId,
-    root_parameters: Vec<Parameter>,
+    tools: HashMap<ToolId, Tool>,
     node_ids: IdCreator<Node>,
     parameter_ids: IdCreator<Parameter>,
+    tool_ids: IdCreator<Tool>,
+    pub input_parameter_for_reused_nodes: ParameterId,
+}
+
+pub struct BuiltinDefinitions {
+    pub x_component: ParameterId,
+    pub y_component: ParameterId,
+    pub compose_vector_2d: NodeId,
+    pub mouse_offset: (ParameterId, NodeId),
+    pub adjust_float_tool: ToolId,
 }
 
 impl Index<NodeId> for Engine {
@@ -210,47 +209,128 @@ impl IndexMut<NodeId> for Engine {
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    pub fn new() -> (Self, BuiltinDefinitions) {
         let start_node = Node {
-            operation: NodeOperation::PrimitiveLiteral(1.0.into()),
+            operation: NodeOperation::Literal(1.0.into()),
+            input: None,
             arguments: vec![],
         };
         let mut node_ids = IdCreator::new();
         let root_node = node_ids.next();
-        let parameter_ids = IdCreator::new();
+        let mut parameter_ids = IdCreator::new();
+        let input_parameter_for_reused_nodes = parameter_ids.next();
+        let tool_ids = IdCreator::new();
         let mut this = Self {
             nodes: hashmap! [root_node => start_node],
-            parameter_nodes: hashmap![],
-            parameter_preview_values: hashmap![],
+            tools: hashmap![],
             root_node,
-            root_parameters: vec![],
             node_ids,
             parameter_ids,
+            tool_ids,
+            input_parameter_for_reused_nodes,
         };
-        this.setup_demo();
-        this
+        let builtins = this.make_builtins();
+        // this.setup_demo(&builtins);
+        (this, builtins)
     }
 
-    fn setup_demo(&mut self) {
+    fn make_builtins(&mut self) -> BuiltinDefinitions {
+        let default_struct = Value::Struct {
+            name: "Empty Struct".to_owned(),
+            components: hashmap![],
+        };
+        let (compose_vector_2d, vector_2d_parameters) = self.push_simple_struct_composer(
+            "Compose Vector/2D",
+            vec![("X", 0.0.into()), ("Y", 0.0.into())],
+        );
+        let zero = self.push_literal_node(0.0.into());
+        let default_vec2 = self.push_node(Node {
+            operation: NodeOperation::ReuseNode(compose_vector_2d),
+            input: None,
+            arguments: vec![zero, zero],
+        });
+        let name = self.push_literal_node("Mouse Offset".to_owned().into());
+        let mouse_offset = self.push_parameter(name, default_vec2);
+
+        let prototype = self.push_literal_node(0.0.into());
+        let drag_handler = {
+            let input = self.push_simple_input(0.0.into());
+            let mouse_offset = mouse_offset.1;
+            let dx = self.push_get_component(mouse_offset, "X");
+            let with_x = self.push_node(Node {
+                operation: NodeOperation::Basic(BasicOp::Add),
+                input: Some(input),
+                arguments: vec![dx],
+            });
+            let dy = self.push_get_component(mouse_offset, "Y");
+            let with_x_and_y = self.push_node(Node {
+                operation: NodeOperation::Basic(BasicOp::Add),
+                input: Some(with_x),
+                arguments: vec![dy],
+            });
+            with_x_and_y
+        };
+        let adjust_float_tool = self.add_tool(Tool {
+            target_prototype: prototype,
+            mouse_drag_handler: drag_handler,
+        });
+        BuiltinDefinitions {
+            x_component: vector_2d_parameters[0],
+            y_component: vector_2d_parameters[1],
+            compose_vector_2d,
+            mouse_offset,
+            adjust_float_tool,
+        }
+    }
+
+    fn add_tool(&mut self, tool: Tool) -> ToolId {
+        let id = self.tool_ids.next();
+        self.tools.insert(id, tool);
+        id
+    }
+
+    pub fn get_tool(&self, tool: ToolId) -> &Tool {
+        &self.tools[&tool]
+    }
+
+    fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
         let value = self.root_node();
-        let param_name = self.push_node(Node {
-            operation: NodeOperation::PrimitiveLiteral(format!("Value").into()),
-            arguments: vec![],
-        });
-        let param_type = self.push_node(Node {
-            operation: NodeOperation::BuiltinTypeLiteral(BuiltinType::Float),
-            arguments: vec![],
-        });
-        let param_default = self.push_node(Node {
-            operation: NodeOperation::PrimitiveLiteral(123.0.into()),
-            arguments: vec![],
-        });
-        let (_, param) = self.push_parameter(param_name, param_type, param_default);
+        let param = self.push_simple_parameter("Value", 123.0.into());
         let root = self.push_node(Node {
-            operation: NodeOperation::Combination(CombinationOperation::Sum),
-            arguments: vec![param, value],
+            operation: NodeOperation::Basic(BasicOp::Add),
+            input: Some(value),
+            arguments: vec![param],
         });
+
+        // let make_state = self.push_simple_struct_composer(
+        //     "Compose Adjust Float Tool Scope",
+        //     vec![("target", 0.0.into()), ("state", default_struct.clone())],
+        // );
+
         self.set_root(root);
+    }
+
+    pub fn push_simple_struct_composer(
+        &mut self,
+        name: &str,
+        default_components: Vec<(&str, Value)>,
+    ) -> (NodeId, Vec<ParameterId>) {
+        let mut args = vec![self.push_literal_node(name.to_owned().into())];
+        let mut parameters = vec![];
+        for (name, default) in default_components {
+            let name = self.push_literal_node(name.to_owned().into());
+            let default = self.push_literal_node(default.clone());
+            let (param, arg) = self.push_parameter(name, default);
+            args.push(name);
+            args.push(arg);
+            parameters.push(param);
+        }
+        let node = self.push_node(Node {
+            operation: NodeOperation::ComposeStruct,
+            input: None,
+            arguments: args,
+        });
+        (node, parameters)
     }
 
     pub fn push_node(&mut self, node: Node) -> NodeId {
@@ -259,49 +339,57 @@ impl Engine {
         id
     }
 
-    pub fn push_parameter(
-        &mut self,
-        name: NodeId,
-        r#type: NodeId,
-        default_value: NodeId,
-    ) -> (ParameterId, NodeId) {
+    pub fn push_literal_node(&mut self, value: Value) -> NodeId {
+        self.push_node(Node {
+            operation: NodeOperation::Literal(value),
+            input: None,
+            arguments: vec![],
+        })
+    }
+
+    pub fn push_get_component(&mut self, input: NodeId, component_name: &str) -> NodeId {
+        self.push_node(Node {
+            operation: NodeOperation::GetComponent(component_name.into()),
+            input: Some(input),
+            arguments: vec![],
+        })
+    }
+
+    pub fn push_simple_parameter(&mut self, name: &str, default_value: Value) -> NodeId {
+        let param_name = self.push_literal_node(name.to_owned().into());
+        let param_default = self.push_literal_node(default_value);
+        let (_, param) = self.push_parameter(param_name, param_default);
+        param
+    }
+
+    pub fn push_parameter(&mut self, name: NodeId, default_value: NodeId) -> (ParameterId, NodeId) {
         let id = self.parameter_ids.next();
         let node = Node {
             operation: NodeOperation::Parameter(id),
-            arguments: vec![name, r#type, default_value],
+            input: Some(default_value),
+            arguments: vec![name],
         };
         let node_id = self.push_node(node);
-        self.parameter_nodes.insert(id, node_id);
-        let default = self[default_value].evaluate(self, &HashMap::new());
-        self.parameter_preview_values.insert(id, default);
         (id, node_id)
+    }
+
+    pub fn push_simple_input(&mut self, default_value: Value) -> NodeId {
+        let param_default = self.push_literal_node(default_value);
+        self.push_input(param_default)
+    }
+
+    pub fn push_input(&mut self, default_value: NodeId) -> NodeId {
+        self.push_node(Node {
+            operation: NodeOperation::InputParameter,
+            input: Some(default_value),
+            arguments: vec![],
+        })
     }
 
     pub fn set_root(&mut self, node: NodeId) {
         self.root_node = node;
         let mut root_parameters = Vec::new();
-        self[self.root_node].collect_parameters(self, &mut root_parameters);
-        self.root_parameters = root_parameters;
-    }
-
-    pub fn root_parameters(&self) -> &[Parameter] {
-        &self.root_parameters
-    }
-
-    pub fn parameter_preview(&self, id: ParameterId) -> &Value {
-        self.parameter_preview_values.get(&id).unwrap()
-    }
-
-    pub fn parameter_preview_mut(&mut self, id: ParameterId) -> &mut Value {
-        self.parameter_preview_values.get_mut(&id).unwrap()
-    }
-
-    pub fn evaluate_root_result_preview(&self) -> Value {
-        let mut parameters = hashmap![];
-        for param in &self.root_parameters {
-            parameters.insert(param.id, self.parameter_preview_values[&param.id].clone());
-        }
-        self[self.root_node].evaluate(self, &parameters)
+        self[self.root_node].collect_parameters_into(self, &mut root_parameters);
     }
 
     pub fn root_node(&self) -> NodeId {
@@ -311,90 +399,184 @@ impl Engine {
 
 pub struct Node {
     pub operation: NodeOperation,
+    pub input: Option<NodeId>,
     pub arguments: Vec<NodeId>,
 }
 
 impl Node {
-    pub fn collect_parameters(&self, engine: &Engine, into: &mut Vec<Parameter>) {
+    pub fn collect_parameters(&self, engine: &Engine) -> Vec<ParameterDescription> {
+        let mut into = Vec::new();
+        self.collect_parameters_into(engine, &mut into);
+        into
+    }
+
+    pub fn collect_parameters_into(&self, engine: &Engine, into: &mut Vec<ParameterDescription>) {
         if let &NodeOperation::Parameter(id) = &self.operation {
-            into.push(Parameter {
+            into.push(ParameterDescription {
                 id,
                 name: engine[self.arguments[0]]
                     .evaluate(engine, &HashMap::new())
                     .as_string()
                     .unwrap()
                     .clone(),
-                r#type: engine[self.arguments[1]]
-                    .evaluate(engine, &HashMap::new())
-                    .as_type(),
+                default: engine[self.input.unwrap()].evaluate(engine, &HashMap::new()),
             });
         } else {
+            if let Some(input) = self.input {
+                engine[input].collect_parameters_into(engine, into);
+            }
             for &arg in &self.arguments {
-                engine[arg].collect_parameters(engine, into);
+                engine[arg].collect_parameters_into(engine, into);
             }
         }
     }
 
-    pub fn evaluate(&self, engine: &Engine, parameters: &HashMap<ParameterId, Value>) -> Value {
+    pub fn evaluate(&self, engine: &Engine, arguments: &HashMap<ParameterId, Value>) -> Value {
         match &self.operation {
-            NodeOperation::PrimitiveLiteral(value) => value.clone(),
-            &NodeOperation::BuiltinTypeLiteral(value) => Value::Type(value),
-            NodeOperation::Parameter(id) => parameters.get(id).unwrap_or(&Value::Free).clone(),
-            NodeOperation::Combination(op) => {
-                let mut value = engine[self.arguments[0]].evaluate(engine, parameters);
-                for &arg in &self.arguments[1..] {
-                    let next = engine[arg].evaluate(engine, parameters);
-                    value = op.combine(&value, &next);
-                }
-                value
+            NodeOperation::Literal(value) => value.clone(),
+            NodeOperation::Parameter(id) => arguments
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| engine[self.input.unwrap()].evaluate(engine, arguments)),
+            NodeOperation::InputParameter => arguments
+                .get(&engine.input_parameter_for_reused_nodes)
+                .cloned()
+                .unwrap(),
+            NodeOperation::Basic(op) => {
+                let a = engine[self.input.unwrap()].evaluate(engine, arguments);
+                let b = engine[self.arguments[0]].evaluate(engine, arguments);
+                op.combine(&a, &b)
             }
+            NodeOperation::ComposeStruct => {
+                let name = engine[self.arguments[0]]
+                    .evaluate(engine, arguments)
+                    .as_string()
+                    .unwrap()
+                    .clone();
+                let mut components = HashMap::new();
+                for (component_name, component_value) in self.arguments[1..].iter().tuples() {
+                    let component_name = engine[*component_name]
+                        .evaluate(engine, arguments)
+                        .as_string()
+                        .unwrap()
+                        .clone();
+                    let component_value = engine[*component_value].evaluate(engine, arguments);
+                    components.insert(component_name, component_value);
+                }
+                Value::Struct { name, components }
+            }
+            NodeOperation::ComposeColor => {
+                let c1 = engine[self.arguments[0]].evaluate(engine, arguments);
+                let c2 = engine[self.arguments[1]].evaluate(engine, arguments);
+                let c3 = engine[self.arguments[2]].evaluate(engine, arguments);
+                Value::Struct {
+                    name: format!("Color"),
+                    components: hashmap! [
+                        format!("Channel 1") => c1,
+                        format!("Channel 2") => c2,
+                        format!("Channel 3") => c3,
+                    ],
+                }
+            }
+            NodeOperation::GetComponent(component_name) => {
+                let input = engine[self.input.unwrap()].evaluate(engine, arguments);
+                if let Value::Struct { components, .. } = input {
+                    components[component_name].clone()
+                } else {
+                    panic!("Cannot extract components from a non-struct value!")
+                }
+            }
+            NodeOperation::ReuseNode(node) => {
+                let node = &engine[*node];
+                let mut next_arguments = HashMap::new();
+                if let Some(input) = self.input {
+                    let value = engine[input].evaluate(engine, arguments);
+                    next_arguments.insert(engine.input_parameter_for_reused_nodes, value);
+                }
+                let params = node.collect_parameters(engine);
+                for (index, param) in params.into_iter().enumerate() {
+                    let arg = self.arguments[index];
+                    let arg = engine[arg].evaluate(engine, arguments);
+                    next_arguments.insert(param.id, arg);
+                }
+                node.evaluate(engine, &next_arguments)
+            }
+        }
+    }
+
+    pub fn as_literal(&self) -> &Value {
+        if let NodeOperation::Literal(literal) = &self.operation {
+            literal
+        } else {
+            panic!("Not a literal.")
+        }
+    }
+
+    pub fn as_literal_mut(&mut self) -> &mut Value {
+        if let NodeOperation::Literal(literal) = &mut self.operation {
+            literal
+        } else {
+            panic!("Not a literal.")
         }
     }
 }
 
 pub enum NodeOperation {
-    PrimitiveLiteral(Value),
-    BuiltinTypeLiteral(BuiltinType),
+    Literal(Value),
     Parameter(ParameterId),
-    Combination(CombinationOperation),
+    InputParameter,
+    Basic(BasicOp),
+    ComposeStruct,
+    ComposeColor,
+    GetComponent(String),
+    ReuseNode(NodeId),
 }
 
 impl NodeOperation {
     pub fn name(&self) -> String {
         use NodeOperation::*;
         match self {
-            PrimitiveLiteral(value) => value.display(),
-            &BuiltinTypeLiteral(r#type) => r#type.name().to_owned(),
+            Literal(value) => value.display(),
             Parameter(..) => format!("Parameter"),
-            Combination(op) => op.name().to_owned(),
+            InputParameter => format!("Input"),
+            Basic(op) => op.name().to_owned(),
+            ComposeStruct => format!("Compose Struct"),
+            ComposeColor => format!("Compose Color"),
+            GetComponent(component_name) => format!("{} Component", component_name),
+            ReuseNode(..) => format!("This Name Shouldn't Show Up"),
         }
     }
 
     pub fn arg_names(&self) -> &'static [&'static str] {
         use NodeOperation::*;
         match self {
-            Combination(op) => op.arg_names(),
-            Parameter(..) => &["Name", "Type", "Default Value"],
-            _ => &[],
+            Literal(..) => &[],
+            Parameter(..) => &["Name"],
+            InputParameter => &[],
+            Basic(op) => op.arg_names(),
+            ComposeStruct => &["This Label Shouldn't Show Up"],
+            ComposeColor => &["Channel 1", "Channel 2", "Channel 3"],
+            GetComponent(..) => &[],
+            ReuseNode(..) => &["This Label Shouldn't Show Up"],
         }
     }
 }
 
-pub enum CombinationOperation {
-    Sum,
-    Difference,
-    Product,
-    Quotient,
+pub enum BasicOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
-impl CombinationOperation {
+impl BasicOp {
     pub fn name(&self) -> &'static str {
-        use CombinationOperation::*;
+        use BasicOp::*;
         match self {
-            Sum => "Sum",
-            Difference => "Difference",
-            Product => "Product",
-            Quotient => "Quotient",
+            Add => "Add",
+            Subtract => "Subtract",
+            Multiply => "Multiply",
+            Divide => "Divide",
         }
     }
 
@@ -413,46 +595,45 @@ impl CombinationOperation {
             (Value::Integer(a), Value::Integer(b)) => self.combine_integers(a, b).into(),
             (Value::Float(a), Value::Float(b)) => self.combine_floats(a, b).into(),
             (Value::String(a), Value::String(b)) => self.combine_strings(a, b).into(),
-            (Value::Type(a), Value::Type(b)) => panic!("Cannot perform arithmetic on types."),
             _ => unreachable!("Values should be the same type."),
         }
     }
 
     fn combine_booleans(&self, a: bool, b: bool) -> bool {
-        use CombinationOperation::*;
+        use BasicOp::*;
         match self {
-            Sum => a || b,
-            Difference => a && !b,
-            Product => a && b,
+            Add => a || b,
+            Subtract => a && !b,
+            Multiply => a && b,
             _ => panic!("Invalid boolean operation"),
         }
     }
 
     fn combine_integers(&self, a: i32, b: i32) -> i32 {
-        use CombinationOperation::*;
+        use BasicOp::*;
         match self {
-            Sum => a + b,
-            Difference => a - b,
-            Product => a * b,
-            Quotient => a / b,
+            Add => a + b,
+            Subtract => a - b,
+            Multiply => a * b,
+            Divide => a / b,
         }
     }
 
     fn combine_floats(&self, a: f32, b: f32) -> f32 {
-        use CombinationOperation::*;
+        use BasicOp::*;
         match self {
-            Sum => a + b,
-            Difference => a - b,
-            Product => a * b,
-            Quotient => a / b,
+            Add => a + b,
+            Subtract => a - b,
+            Multiply => a * b,
+            Divide => a / b,
         }
     }
 
     fn combine_strings(&self, a: String, b: String) -> String {
-        use CombinationOperation::*;
+        use BasicOp::*;
         match self {
-            Sum => format!("{}{}", a, b),
-            Product => format!("{}{}", a, b),
+            Add => format!("{}{}", a, b),
+            Multiply => format!("{}{}", a, b),
             _ => panic!("Invalid string operation"),
         }
     }

@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use wgpu::SurfaceError;
 use wgpu_glyph::{HorizontalAlign, VerticalAlign};
 use winit::event_loop::ControlFlow;
 
 use super::App;
 use crate::{
-    engine::{Node, Parameter, ParameterId, Value},
+    engine::{Node, NodeId, Parameter, ParameterId, Value},
     renderer::{
         Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
@@ -39,24 +41,23 @@ impl App {
     }
 
     fn render_root_node(&mut self, layer: &mut Shapes) -> BoundingBox {
-        let root_node = &self.computation_engine[self.computation_engine.root_node()];
         let pos = Position {
             x: self.preview_drawer_size,
             y: 0.0,
         };
-        self.render_node(pos, layer, root_node, "Root")
+        self.render_node(pos, layer, self.computation_engine.root_node(), "Root")
     }
 
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
         let mut y = 0.0;
         let mut bboxes = Vec::new();
-        for parameter in self.computation_engine.root_parameters() {
-            let value = self.computation_engine.parameter_preview(parameter.id);
-            let bbox = render_parameter_preview(Position { x: 0.0, y }, layer, parameter, value);
-            y = bbox.end.y;
-            bboxes.push(bbox);
+        let root = self.computation_engine.root_node();
+        let root = &self.computation_engine[root];
+        let mut parameters = HashMap::new();
+        for param_desc in root.collect_parameters(&self.computation_engine) {
+            parameters.insert(param_desc.id, param_desc.default.clone());
         }
-        let value = self.computation_engine.evaluate_root_result_preview();
+        let value = root.evaluate(&self.computation_engine, &parameters);
         let bbox = render_output_preview(Position { x: 0.0, y }, layer, format!("Root"), &value);
         bboxes.push(bbox);
         BoundingBox::new_from_children(bboxes)
@@ -66,20 +67,30 @@ impl App {
         &self,
         start: Position,
         layer: &mut Shapes,
-        node: &Node,
+        node_id: NodeId,
         label: &str,
     ) -> BoundingBox {
+        let node = &self.computation_engine[node_id];
         let Position { x, y } = start;
         let mut label = Text {
-            sections: vec![
-                Section::parameter_label(format!("{}: ", label)),
-                Section::node_label(node.operation.name()),
-            ],
+            sections: if label.len() > 0 {
+                vec![
+                    Section::parameter_label(format!("{}: ", label)),
+                    Section::node_label(node.operation.name()),
+                ]
+            } else {
+                vec![Section::node_label(node.operation.name())]
+            },
             center: [x + NODE_PADDING, y + NODE_HEADER_HEIGHT / 2.0],
             bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
             horizontal_align: HorizontalAlign::Left,
             vertical_align: VerticalAlign::Center,
         };
+        let mut y = y;
+        if let Some(input) = node.input {
+            let bbox = self.render_node(start, layer, input, "");
+            y = bbox.end.y + NODE_PADDING;
+        }
         let bbox = if node.arguments.len() == 0 {
             layer.push_rect(RectInstance {
                 position: [x, y],
@@ -113,25 +124,23 @@ impl App {
                 width: NODE_MIN_WIDTH,
                 height: NODE_HEADER_HEIGHT,
             };
-            let kind = BoundingBoxKind::Unused;
+            let kind = BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, node_id);
             BoundingBox::new_start_size(start, size, kind)
         } else {
-            let mut y = y;
             let arg_names = node.operation.arg_names();
             let mut arg_bboxes = Vec::new();
-            for (index, arg) in node.arguments.iter().enumerate() {
-                let first = index == 0;
-                let last = index == node.arguments.len() - 1;
+            for (index, arg) in node.arguments.iter().enumerate().rev() {
+                let top = index == 0;
+                let bottom = index == node.arguments.len() - 1;
                 let start = Position {
                     x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
                     y: y + 0.5 * NODE_PADDING,
                 };
-                let arg = &self.computation_engine[*arg];
                 let label = arg_names[index.min(arg_names.len() - 1)];
-                let arg_bbox = self.render_node(start, layer, arg, label);
-                let height = arg_bbox.size().height + if last { 1.5 } else { 1.0 } * NODE_PADDING;
+                let arg_bbox = self.render_node(start, layer, *arg, label);
+                let height = arg_bbox.size().height + if top { 1.5 } else { 1.0 } * NODE_PADDING;
                 arg_bboxes.push(arg_bbox);
-                if first {
+                if bottom {
                     layer.push_rect(RectInstance {
                         position: [x, y],
                         size: [
@@ -238,8 +247,10 @@ fn render_parameter_preview(
     parameter: &Parameter,
     value: &Value,
 ) -> BoundingBox {
-    let bbox_kind = BoundingBoxKind::EditParameter(parameter.id);
-    render_value_preview_helper(start, layer, parameter.name.clone(), value, bbox_kind)
+    // let bbox_kind = BoundingBoxKind::EditParameter(parameter.id);
+    // render_value_preview_helper(start, layer, parameter.name.clone(), value,
+    // bbox_kind)
+    todo!()
 }
 
 fn render_output_preview(
