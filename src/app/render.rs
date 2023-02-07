@@ -21,11 +21,25 @@ use crate::{
 
 impl App {
     pub(super) fn render(&mut self) {
+        let mut bboxes = Vec::new();
         let mut base_layer = Shapes::new();
-        self.root_bbox = BoundingBox::new_from_children(vec![
-            self.render_root_node(&mut base_layer),
-            self.render_preview_drawer(&mut base_layer),
-        ]);
+        bboxes.push(self.render_preview_drawer(&mut base_layer));
+        let mut x = bboxes[0].end.x;
+        let mut editor_nodes = vec![(format!("Root"), self.computation_engine.root_node())];
+        while editor_nodes.len() > 0 {
+            let (bbox, next_nodes) = self.render_node_editor(
+                Position {
+                    x: x + NODE_PADDING,
+                    y: 0.0,
+                },
+                &mut base_layer,
+                editor_nodes,
+            );
+            editor_nodes = next_nodes;
+            x = bbox.end.x;
+            bboxes.push(bbox);
+        }
+        self.root_bbox = BoundingBox::new_from_children(bboxes);
 
         let layers = [&base_layer];
         let result = self.render_engine.render(&layers);
@@ -39,16 +53,7 @@ impl App {
         }
     }
 
-    fn render_root_node(&mut self, layer: &mut Shapes) -> BoundingBox {
-        let pos = Position {
-            x: self.preview_drawer_size,
-            y: 0.0,
-        };
-        self.render_node_stack(pos, layer, self.computation_engine.root_node(), "Root")
-    }
-
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
-        let mut y = 0.0;
         let mut bboxes = Vec::new();
         let root = self.computation_engine.root_node();
         let root = &self.computation_engine[root];
@@ -57,39 +62,67 @@ impl App {
             parameters.insert(param_desc.id, param_desc.default.clone());
         }
         let value = root.evaluate(&self.computation_engine, &parameters);
-        let bbox = render_output_preview(Position { x: 0.0, y }, layer, format!("Root"), &value);
+        let bbox =
+            render_output_preview(Position { x: 0.0, y: 0.0 }, layer, format!("Root"), &value);
         bboxes.push(bbox);
         BoundingBox::new_from_children(bboxes)
     }
 
-    fn render_node_stack(
+    fn render_node_editor(
         &self,
         start: Position,
         layer: &mut Shapes,
-        node_id: NodeId,
-        output_label: &str,
-    ) -> BoundingBox {
-        let node_bbox = self.render_node(start, layer, node_id);
-        let x = start.x;
-        let y = node_bbox.end.y + NODE_PADDING;
-        layer.push_rect(RectInstance {
-            position: [x, y],
-            size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
-            fill_color: NODE_FILL,
-            outline_color: NODE_OUTLINE,
-            outline_modes: TOP_OUTLINE_FLAT
-                | BOTTOM_OUTLINE_FLAT
-                | LEFT_OUTLINE_FLAT
-                | RIGHT_OUTLINE_FLAT,
-        });
-        layer.push_text(Text {
-            sections: vec![Section::node_label(output_label.to_owned())],
-            center: [x + NODE_MIN_WIDTH / 2.0, y + NODE_HEADER_HEIGHT / 2.0],
-            bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
-            horizontal_align: HorizontalAlign::Center,
-            vertical_align: VerticalAlign::Center,
-        });
-        node_bbox
+        nodes: Vec<(String, NodeId)>,
+    ) -> (BoundingBox, Vec<(String, NodeId)>) {
+        let mut next_column_nodes = Vec::new();
+        let mut bboxes = Vec::new();
+        let mut y = 0.0;
+        for &(_, node) in &nodes {
+            let mut next_node = Some(node);
+            while let Some(node_id) = next_node {
+                let node = &self.computation_engine[node_id];
+                if self.selected_nodes.contains(&node_id) {
+                    let params = node.collect_parameters(&self.computation_engine);
+                    for (index, arg) in node.arguments.iter().enumerate().rev() {
+                        next_column_nodes.push((
+                            format!(
+                                "{}/{}",
+                                node.operation.name(),
+                                node.operation.param_name(index, &params)
+                            ),
+                            *arg,
+                        ));
+                    }
+                }
+                next_node = node.input;
+            }
+        }
+        for (name, node) in nodes {
+            let node_bbox = self.render_node(Position { x: start.x, y }, layer, node);
+            let x = start.x;
+            y = node_bbox.end.y + NODE_PADDING;
+            layer.push_rect(RectInstance {
+                position: [x, y],
+                size: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+                fill_color: NODE_FILL,
+                outline_color: NODE_OUTLINE,
+                outline_modes: TOP_OUTLINE_FLAT
+                    | BOTTOM_OUTLINE_FLAT
+                    | LEFT_OUTLINE_FLAT
+                    | RIGHT_OUTLINE_FLAT,
+            });
+            layer.push_text(Text {
+                sections: vec![Section::node_label(name)],
+                center: [x + NODE_MIN_WIDTH / 2.0, y + NODE_HEADER_HEIGHT / 2.0],
+                bounds: [NODE_MIN_WIDTH, NODE_HEADER_HEIGHT],
+                horizontal_align: HorizontalAlign::Center,
+                vertical_align: VerticalAlign::Center,
+            });
+            y += NODE_HEADER_HEIGHT + NODE_PADDING;
+            bboxes.push(node_bbox);
+        }
+        next_column_nodes.reverse();
+        (BoundingBox::new_from_children(bboxes), next_column_nodes)
     }
 
     fn render_node(&self, start: Position, layer: &mut Shapes, node_id: NodeId) -> BoundingBox {
@@ -109,32 +142,16 @@ impl App {
             y = bbox.end.y + NODE_PADDING;
             bboxes.push(bbox);
         }
-        if let NodeOperation::ReuseNode(..) = node.operation {
-            for parameter in node
-                .collect_parameters(&self.computation_engine)
-                .iter()
-                .rev()
-            {
-                let start = Position {
-                    x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
-                    y,
-                };
-                let param_bbox = render_parameter(start, layer, &parameter.name);
-                y = param_bbox.end.y + NODE_PADDING;
-                bboxes.push(param_bbox);
-            }
-        } else {
-            let param_names = node.operation.param_names();
-            for (index, _) in node.arguments.iter().enumerate().rev() {
-                let start = Position {
-                    x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
-                    y,
-                };
-                let label = param_names[index.min(param_names.len() - 1)];
-                let param_bbox = render_parameter(start, layer, label);
-                y = param_bbox.end.y + NODE_PADDING;
-                bboxes.push(param_bbox);
-            }
+        let parameters = node.collect_parameters(&self.computation_engine);
+        for (index, _) in node.arguments.iter().enumerate().rev() {
+            let start = Position {
+                x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
+                y,
+            };
+            let label = node.operation.param_name(index, &parameters);
+            let param_bbox = render_parameter(start, layer, label);
+            y = param_bbox.end.y + NODE_PADDING;
+            bboxes.push(param_bbox);
         }
         layer.push_rect(RectInstance {
             position: [x, y],
@@ -151,13 +168,19 @@ impl App {
             x: x + NODE_MIN_WIDTH,
             y: y + NODE_HEADER_HEIGHT,
         };
-        bboxes.push(BoundingBox::new_start_end(
-            Position { x, y },
-            end,
-            BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, node_id),
-        ));
+        let kind = self.default_node_bbox_kind(node_id, &node.operation);
+        bboxes.push(BoundingBox::new_start_end(Position { x, y }, end, kind));
         layer.push_text(label);
         BoundingBox::new_from_children(bboxes)
+    }
+
+    fn default_node_bbox_kind(&self, id: NodeId, operation: &NodeOperation) -> BoundingBoxKind {
+        match operation {
+            NodeOperation::Literal(Value::Float(..)) => {
+                BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, id)
+            }
+            _ => BoundingBoxKind::ToggleNodeSelected(id),
+        }
     }
 }
 

@@ -1,9 +1,10 @@
 mod on_event;
 mod render;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bytemuck::Zeroable;
+use maplit::hashset;
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton},
@@ -12,7 +13,7 @@ use winit::{
 };
 
 use crate::{
-    engine::{Engine, ParameterId, BuiltinDefinitions},
+    engine::{BuiltinDefinitions, Engine, NodeId, ParameterId},
     renderer::{Position, RenderEngine},
     widgets::{BoundingBox, BoundingBoxKind, ValueWidget},
 };
@@ -29,8 +30,8 @@ pub struct App {
     computation_engine: Engine,
     builtins: BuiltinDefinitions,
     preview_drawer_size: f32,
-    parameter_widgets: HashMap<ParameterId, Box<dyn ValueWidget>>,
     root_bbox: BoundingBox,
+    selected_nodes: HashSet<NodeId>,
     previous_mouse_pos: Position,
     hovering: Option<BoundingBoxKind>,
     dragging: Option<BoundingBoxKind>,
@@ -53,12 +54,12 @@ impl App {
             computation_engine,
             builtins,
             preview_drawer_size: 200.0,
-            parameter_widgets: HashMap::new(),
             root_bbox: BoundingBox::new_start_end(
                 Position::zeroed(),
                 Position::zeroed(),
                 BoundingBoxKind::Unused,
             ),
+            selected_nodes: hashset![],
             previous_mouse_pos: Position { x: 0.0, y: 0.0 },
             hovering: None,
             dragging: None,
@@ -89,6 +90,13 @@ impl App {
 
     fn on_mouse_up(&mut self, button: MouseButton) {
         if button == MouseButton::Left {
+            if let Some(BoundingBoxKind::ToggleNodeSelected(node)) = self.dragging {
+                if self.selected_nodes.contains(&node) {
+                    self.selected_nodes.remove(&node);
+                } else {
+                    self.selected_nodes.insert(node);
+                }
+            }
             self.dragging = None;
         }
     }

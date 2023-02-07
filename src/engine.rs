@@ -300,11 +300,17 @@ impl Engine {
 
     fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
         let value = self.root_node();
-        let param = self.push_simple_parameter("Value", 123.0.into());
+        let param1 = self.push_simple_parameter("Value", 2.0.into());
+        let value = self.push_node(Node {
+            operation: NodeOperation::Basic(BasicOp::Multiply),
+            input: Some(value),
+            arguments: vec![param1],
+        });
+        let param2 = self.push_simple_parameter("Value", 123.0.into());
         let root = self.push_node(Node {
             operation: NodeOperation::Basic(BasicOp::Add),
             input: Some(value),
-            arguments: vec![param],
+            arguments: vec![param2],
         });
 
         // let make_state = self.push_simple_struct_composer(
@@ -552,13 +558,25 @@ impl NodeOperation {
         }
     }
 
-    pub fn param_names(&self) -> &'static [&'static str] {
+    pub fn param_name<'a>(&self, index: usize, parameters: &'a [ParameterDescription]) -> &'a str {
+        use NodeOperation::*;
+        match self {
+            ComposeStruct => todo!(),
+            ReuseNode(..) => &parameters[index].name,
+            _ => {
+                let names = self.param_names();
+                names[index.min(names.len() - 1)]
+            }
+        }
+    }
+
+    fn param_names(&self) -> &'static [&'static str] {
         use NodeOperation::*;
         match self {
             Literal(..) => &[],
             Parameter(..) => &["Name"],
             InputParameter => &[],
-            Basic(op) => op.arg_names(),
+            Basic(op) => op.param_names(),
             ComposeStruct => &["This Label Shouldn't Show Up"],
             ComposeColor => &["Channel 1", "Channel 2", "Channel 3"],
             GetComponent(..) => &[],
@@ -585,7 +603,8 @@ impl BasicOp {
         }
     }
 
-    fn arg_names(&self) -> &'static [&'static str] {
+    fn param_names(&self) -> &'static [&'static str] {
+        use BasicOp::*;
         match self {
             Add => &["Offset"],
             Subtract => &["Offset"],
