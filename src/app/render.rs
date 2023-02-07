@@ -13,8 +13,10 @@ use crate::{
         RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
-        INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH,
-        NODE_HEIGHT, NODE_LABEL_PADDING, NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH,
+        FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
+        NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_LABEL_PADDING,
+        NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH, VECTOR_TYPE_FILL_COLOR,
+        VECTOR_TYPE_OUTLINE_COLOR,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -139,7 +141,8 @@ impl App {
         let mut bboxes = Vec::new();
         if let Some(input) = node.input {
             let bbox = self.render_node(start, layer, input);
-            y = bbox.end.y + INTER_NODE_PADDING;
+            y = bbox.end.y;
+            y += INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
         if self.selected_nodes.contains(&node_id) {
@@ -178,6 +181,15 @@ impl App {
             x: x + NODE_WIDTH,
             y: y + NODE_HEIGHT,
         };
+        // let (fill_color, outline_color) = (VECTOR_TYPE_FILL_COLOR, VECTOR_TYPE_OUTLINE_COLOR);
+        let (fill_color, outline_color) = (FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR);
+        layer.push_rect(RectInstance {
+            position: [start.x, end.y],
+            size: [INTER_NODE_PADDING * 2.0, INTER_NODE_PADDING],
+            fill_color,
+            outline_color,
+            outline_modes: LEFT_OUTLINE_DIAGONAL | RIGHT_OUTLINE_ANTIDIAGONAL,
+        });
         let kind = self.default_node_bbox_kind(node_id, &node.operation);
         bboxes.push(BoundingBox::new_start_end(Position { x, y }, end, kind));
         layer.push_text(label);
