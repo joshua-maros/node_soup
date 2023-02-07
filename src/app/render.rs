@@ -142,16 +142,18 @@ impl App {
             y = bbox.end.y + NODE_PADDING;
             bboxes.push(bbox);
         }
-        let parameters = node.collect_parameters(&self.computation_engine);
-        for (index, _) in node.arguments.iter().enumerate().rev() {
-            let start = Position {
-                x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
-                y,
-            };
-            let label = node.operation.param_name(index, &parameters);
-            let param_bbox = render_parameter(start, layer, label);
-            y = param_bbox.end.y + NODE_PADDING;
-            bboxes.push(param_bbox);
+        if self.selected_nodes.contains(&node_id) {
+            let parameters = node.collect_parameters(&self.computation_engine);
+            for (index, _) in node.arguments.iter().enumerate().rev() {
+                let start = Position {
+                    x: x + NODE_GUTTER_WIDTH + NODE_PADDING,
+                    y,
+                };
+                let label = node.operation.param_name(index, &parameters);
+                let param_bbox = render_parameter(start, layer, label);
+                y = param_bbox.end.y + NODE_PADDING;
+                bboxes.push(param_bbox);
+            }
         }
         layer.push_rect(RectInstance {
             position: [x, y],
