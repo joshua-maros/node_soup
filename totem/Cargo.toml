@@ -13,4 +13,3 @@ maplit = "1.0.2"
 pollster = "0.2.5"
 renderer = {path = "../renderer"}
 theme = {path = "../theme"}
-winit = "0.27.5"

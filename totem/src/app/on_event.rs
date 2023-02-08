@@ -1,8 +1,10 @@
 use maplit::hashmap;
-use winit::{
-    dpi::PhysicalPosition,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::ControlFlow,
+use renderer::{
+    winit::{
+        ControlFlow, ElementState, Event, EventLoop, KeyboardInput, MouseButton, PhysicalPosition,
+        PhysicalSize, VirtualKeyCode, Window, WindowBuilder, WindowEvent,
+    },
+    Position,
 };
 
 use super::{App, DragTarget};
@@ -10,8 +12,6 @@ use crate::{
     engine::{NodeId, ParameterId, ToolId, Value},
     widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
-use 
-    renderer::{ Position, SurfaceError};
 
 impl App {
     pub(super) fn on_event(&mut self, event: Event<()>) {

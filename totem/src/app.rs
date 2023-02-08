@@ -4,12 +4,12 @@ mod render;
 use std::collections::{HashMap, HashSet};
 
 use maplit::hashset;
-use renderer::{Position, RenderEngine};
-use winit::{
-    dpi::PhysicalSize,
-    event::{ElementState, MouseButton},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+use renderer::{
+    winit::{
+        ControlFlow, ElementState, Event, EventLoop, KeyboardInput, MouseButton, PhysicalPosition,
+        PhysicalSize, VirtualKeyCode, Window, WindowBuilder, WindowEvent,
+    },
+    Position, RenderEngine,
 };
 
 use crate::{

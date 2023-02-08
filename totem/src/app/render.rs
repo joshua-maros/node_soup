@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use renderer::{
-    HorizontalAlign, IconInstance, Position, RectInstance, Section, Shapes, Size, SurfaceError,
-    Text, VerticalAlign, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL,
-    LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT,
-    TOP_OUTLINE_FLAT,
+    winit::ControlFlow, HorizontalAlign, IconInstance, Position, RectInstance, Section, Shapes,
+    Size, SurfaceError, Text, VerticalAlign, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL,
+    LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL,
+    RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
 };
 use theme::{
     FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
@@ -13,7 +13,6 @@ use theme::{
     TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE, TOOL_ICON_SIZE, VECTOR_TYPE_FILL_COLOR,
     VECTOR_TYPE_OUTLINE_COLOR,
 };
-use winit::event_loop::ControlFlow;
 
 use super::App;
 use crate::{
