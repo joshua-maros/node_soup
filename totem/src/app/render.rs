@@ -160,8 +160,8 @@ impl App {
             y += INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
+        let bottom = y;
         if self.selected_node_path.contains(&node_id) {
-            let bottom = y;
             let parameters = node.collect_parameters(&self.computation_engine);
             for (index, _) in node.arguments.iter().enumerate().rev() {
                 let start = Position {
@@ -178,24 +178,31 @@ impl App {
                 y = param_bbox.end.y + NODE_PARAMETER_PADDING;
                 bboxes.push(param_bbox);
             }
+        }
+        let selected = self.selected_node_path.last() == Some(&node_id);
+        layer.push_rect(RectInstance {
+            position: [x, y],
+            size: [NODE_GUTTER_WIDTH, NODE_HEIGHT],
+            fill_color: NODE_FILL,
+            outline_color: NODE_OUTLINE,
+            outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+        });
+        layer.push_rect(RectInstance {
+            position: [x + NODE_GUTTER_WIDTH, y],
+            size: [NODE_WIDTH - NODE_GUTTER_WIDTH, NODE_HEIGHT],
+            fill_color: NODE_FILL,
+            outline_color: NODE_OUTLINE,
+            outline_modes: RIGHT_OUTLINE_FLAT | TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+        });
+        if self.selected_node_path.contains(&node_id) {
             layer.push_rect(RectInstance {
                 position: [start.x, bottom],
-                size: [NODE_GUTTER_WIDTH, y - bottom],
+                size: [NODE_GUTTER_WIDTH, y - bottom + 1.0],
                 fill_color: NODE_FILL,
                 outline_color: NODE_OUTLINE,
                 outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
             });
         }
-        layer.push_rect(RectInstance {
-            position: [x, y],
-            size: [NODE_WIDTH, NODE_HEIGHT],
-            fill_color: NODE_FILL,
-            outline_color: NODE_OUTLINE,
-            outline_modes: LEFT_OUTLINE_FLAT
-                | RIGHT_OUTLINE_FLAT
-                | TOP_OUTLINE_FLAT
-                | BOTTOM_OUTLINE_FLAT,
-        });
         label.center[1] = y + NODE_HEIGHT / 2.0;
         let end = Position {
             x: x + NODE_WIDTH,
@@ -205,11 +212,7 @@ impl App {
         layer.push_icon(IconInstance {
             position: [end.x - d, end.y - d],
             size: NODE_ICON_SIZE,
-            index: if self.selected_node_path.last() == Some(&node_id) {
-                1
-            } else {
-                0
-            },
+            index: if selected { 1 } else { 0 },
         });
         // let (fill_color, outline_color) = (VECTOR_TYPE_FILL_COLOR,
         // VECTOR_TYPE_OUTLINE_COLOR);
