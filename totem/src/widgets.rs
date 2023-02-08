@@ -1,17 +1,14 @@
-use wgpu_glyph::{HorizontalAlign, VerticalAlign};
-
-use crate::{
-    engine::{NodeId, ParameterId, ToolId, Value},
-    renderer::{
-        Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
-        LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
-        RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
-    },
-    theme::{
-        NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_OUTLINE,
-        NODE_PARAMETER_PADDING, NODE_WIDTH,
-    },
+use renderer::{
+    HorizontalAlign, Position, RectInstance, Section, Shapes, Size, Text, VerticalAlign,
+    BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
+    RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
 };
+use theme::{
+    NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_OUTLINE,
+    NODE_PARAMETER_PADDING, NODE_WIDTH,
+};
+
+use crate::engine::{NodeId, ParameterId, ToolId, Value};
 
 #[derive(Clone, Debug)]
 pub enum BoundingBoxKind {

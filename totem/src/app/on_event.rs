@@ -1,5 +1,4 @@
 use maplit::hashmap;
-use wgpu::SurfaceError;
 use winit::{
     dpi::PhysicalPosition,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -9,9 +8,10 @@ use winit::{
 use super::{App, DragTarget};
 use crate::{
     engine::{NodeId, ParameterId, ToolId, Value},
-    renderer::Position,
     widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
+use 
+    renderer::{ Position, SurfaceError};
 
 impl App {
     pub(super) fn on_event(&mut self, event: Event<()>) {

@@ -6,10 +6,9 @@ use std::{
 
 use itertools::Itertools;
 use maplit::hashmap;
-use wgpu::PrimitiveState;
+use renderer::{Position, Shapes};
 
 use crate::{
-    renderer::{Position, Shapes},
     util::{self, Id, IdCreator},
     widgets::{self, SimpleValueWidget},
 };

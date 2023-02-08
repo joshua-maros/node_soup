@@ -11,7 +11,6 @@ use super::{
 };
 use crate::{
     renderer::{fonts::Fonts, shapes::Shapes, vertex_data::RECT_VERTS_LEN},
-    theme::{self},
 };
 
 impl RenderEngine {

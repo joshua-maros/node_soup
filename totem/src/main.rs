@@ -1,11 +1,9 @@
 #![feature(ptr_to_from_bits)]
 
 mod app;
-mod renderer;
-mod theme;
-mod widgets;
 mod engine;
 mod util;
+mod widgets;
 
 use app::App;
 

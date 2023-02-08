@@ -10,7 +10,6 @@ use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
 use super::{ActiveRenderInfo, MutableResources, ReadOnlyResources};
 use crate::{
     renderer::{fonts::Fonts, shapes::Shapes, Text},
-    theme::{self},
 };
 
 pub(super) fn render_text(

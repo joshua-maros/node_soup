@@ -3,8 +3,8 @@ mod render;
 
 use std::collections::{HashMap, HashSet};
 
-use bytemuck::Zeroable;
 use maplit::hashset;
+use renderer::{Position, RenderEngine};
 use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton},
@@ -14,7 +14,6 @@ use winit::{
 
 use crate::{
     engine::{BuiltinDefinitions, Engine, NodeId, ParameterId},
-    renderer::{Position, RenderEngine},
     widgets::{BoundingBox, BoundingBoxKind, ValueWidget},
 };
 

@@ -8,7 +8,6 @@ use wgpu::{
 use super::{ActiveRenderInfo, ReadOnlyResources};
 use crate::{
     renderer::{shapes::Shapes, vertex_data::RECT_VERTS_LEN},
-    theme::{self},
 };
 
 pub(super) fn render_icons(ror: &ReadOnlyResources, info: &mut ActiveRenderInfo) {
