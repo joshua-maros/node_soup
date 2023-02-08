@@ -1,22 +1,9 @@
-[package]
-edition = "2021"
-name = "totem"
-version = "0.1.0"
+[workspace]
+resolver = "2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-ab_glyph = "0.2"
-bytemuck = {version = "1.12.3", features = ["derive"]}
-env_logger = "0.10.0"
-image = {version = "0.24"}
-itertools = "0.10.5"
-log = "0.4.17"
-maplit = "1.0.2"
-pollster = "0.2.5"
-wgpu = "0.14.2"
-wgpu_glyph = "0.18.0"
-winit = "0.27.5"
+members = [
+  "totem",
+]
 
 [profile.dev.package."*"]
 opt-level = 3
