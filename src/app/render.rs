@@ -73,7 +73,7 @@ impl App {
         }
         let value = active.evaluate(&self.computation_engine, &parameters);
         let bbox = render_output_preview(Position { x: 0.0, y: 0.0 }, layer, &value);
-        let y = bbox.end.y;
+        let y = bbox.end.y + INTER_PANEL_PADDING;
         bboxes.push(bbox);
         let bbox = self.render_toolbox(Position { x: 0.0, y }, layer);
         bboxes.push(bbox);
