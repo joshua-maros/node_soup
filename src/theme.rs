@@ -24,7 +24,10 @@ pub const INTER_NODE_PADDING: f32 = 6.0;
 pub const NODE_GUTTER_WIDTH: f32 = INTER_NODE_PADDING * 2.0;
 pub const INTER_PANEL_PADDING: f32 = 18.0;
 
-pub const PREVIEW_DRAWER_WIDTH: f32 = 512.0;
+pub const PREVIEW_WIDGET_SIZE: f32 = 512.0;
+pub const TOOL_BUTTON_SIZE: f32 = 48.0;
+pub const TOOL_ICON_SIZE: f32 = 32.0;
+pub const TOOL_BUTTON_PADDING: f32 = (TOOL_BUTTON_SIZE - TOOL_ICON_SIZE) / 2.0;
 
 pub const NODE_LABEL_COLOR_BRIGHTNESS: f32 = 0.5;
 pub const NODE_LABEL_COLOR_OPACITY: f32 = 1.0;
@@ -35,6 +38,15 @@ pub const NODE_LABEL_COLOR: [f32; 4] = [
     NODE_LABEL_COLOR_OPACITY,
 ];
 pub const NODE_LABEL_SIZE: f32 = 16.0;
+
+pub const BIG_VALUE_SIZE: f32 = 32.0;
+pub const BIG_VALUE_BRIGHTNESS: f32 = 1.0;
+pub const BIG_VALUE_COLOR: [f32; 4] = [
+    BIG_VALUE_BRIGHTNESS,
+    BIG_VALUE_BRIGHTNESS,
+    BIG_VALUE_BRIGHTNESS,
+    1.0,
+];
 
 macro_rules! outline_to_fill {
     ($OUTLINE_COLOR:expr) => {

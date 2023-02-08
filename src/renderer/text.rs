@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
 
-use super::fonts::FONT_LIGHT;
+use super::fonts::{FONT_LIGHT, FONT_BOLD};
 use crate::theme::{
-    NODE_LABEL_COLOR, NODE_LABEL_SIZE, 
+    NODE_LABEL_COLOR, NODE_LABEL_SIZE, BIG_VALUE_COLOR, BIG_VALUE_SIZE, 
 };
 
 #[derive(Clone, Debug)]
@@ -49,6 +49,16 @@ impl Section {
             style: FONT_LIGHT,
         }
     }
+
+    pub fn big_value_text(text: String) -> Self {
+        Self {
+            text,
+            color: BIG_VALUE_COLOR,
+            size: BIG_VALUE_SIZE,
+            style: FONT_BOLD,
+        }
+    }
+
 
     pub(super) fn as_wgpu_text(&self) -> wgpu_glyph::Text {
         wgpu_glyph::Text {

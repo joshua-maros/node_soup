@@ -16,7 +16,8 @@ use crate::{
         FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
         NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_ICON_PADDING,
         NODE_ICON_SIZE, NODE_LABEL_PADDING, NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH,
-        PREVIEW_DRAWER_WIDTH, VECTOR_TYPE_FILL_COLOR, VECTOR_TYPE_OUTLINE_COLOR,
+        PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE, TOOL_ICON_SIZE,
+        VECTOR_TYPE_FILL_COLOR, VECTOR_TYPE_OUTLINE_COLOR,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -58,17 +59,23 @@ impl App {
         }
     }
 
+    pub fn active_node(&self) -> NodeId {
+        let active = self.selected_node_path.last().copied();
+        active.unwrap_or(self.computation_engine.root_node())
+    }
+
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
         let mut bboxes = Vec::new();
-        let root = self.computation_engine.root_node();
-        let root = &self.computation_engine[root];
+        let active = &self.computation_engine[self.active_node()];
         let mut parameters = HashMap::new();
-        for param_desc in root.collect_parameters(&self.computation_engine) {
+        for param_desc in active.collect_parameters(&self.computation_engine) {
             parameters.insert(param_desc.id, param_desc.default.clone());
         }
-        let value = root.evaluate(&self.computation_engine, &parameters);
-        let bbox =
-            render_output_preview(Position { x: 0.0, y: 0.0 }, layer, format!("Root"), &value);
+        let value = active.evaluate(&self.computation_engine, &parameters);
+        let bbox = render_output_preview(Position { x: 0.0, y: 0.0 }, layer, &value);
+        let y = bbox.end.y;
+        bboxes.push(bbox);
+        let bbox = self.render_toolbox(Position { x: 0.0, y }, layer);
         bboxes.push(bbox);
         BoundingBox::new_from_children(bboxes)
     }
@@ -232,6 +239,34 @@ impl App {
             _ => BoundingBoxKind::SelectNode(containing_editor_index, id),
         }
     }
+
+    fn render_toolbox(&self, start: Position, layer: &mut Shapes) -> BoundingBox {
+        let mut bboxes = Vec::new();
+        layer.push_rect(RectInstance {
+            position: [start.x, start.y],
+            size: [TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE],
+            fill_color: FLOAT_TYPE_FILL_COLOR,
+            outline_color: FLOAT_TYPE_OUTLINE_COLOR,
+            outline_modes: TOP_OUTLINE_FLAT
+                | BOTTOM_OUTLINE_FLAT
+                | LEFT_OUTLINE_FLAT
+                | RIGHT_OUTLINE_FLAT,
+        });
+        layer.push_icon(IconInstance {
+            position: [start.x + TOOL_BUTTON_PADDING, start.y + TOOL_BUTTON_PADDING],
+            size: TOOL_ICON_SIZE,
+            index: 1,
+        });
+        bboxes.push(BoundingBox::new_start_end(
+            start,
+            Position {
+                x: start.x + TOOL_BUTTON_SIZE,
+                y: start.y + TOOL_BUTTON_SIZE,
+            },
+            BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool),
+        ));
+        BoundingBox::new_from_children(bboxes)
+    }
 }
 
 fn render_parameter(start: Position, layer: &mut Shapes, name: &str, caret: bool) -> BoundingBox {
@@ -258,26 +293,10 @@ fn render_parameter(start: Position, layer: &mut Shapes, name: &str, caret: bool
     BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
-fn render_output_preview(
-    start: Position,
-    layer: &mut Shapes,
-    label: String,
-    value: &Value,
-) -> BoundingBox {
-    let bbox_kind = BoundingBoxKind::Unused;
-    render_value_preview_helper(start, layer, label, value, bbox_kind)
-}
-
-fn render_value_preview_helper(
-    start: Position,
-    layer: &mut Shapes,
-    label: String,
-    value: &Value,
-    bbox_kind: BoundingBoxKind,
-) -> BoundingBox {
+fn render_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> BoundingBox {
     let size = Size {
-        width: PREVIEW_DRAWER_WIDTH,
-        height: NODE_HEIGHT,
+        width: PREVIEW_WIDGET_SIZE,
+        height: PREVIEW_WIDGET_SIZE,
     };
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -290,17 +309,11 @@ fn render_value_preview_helper(
             | RIGHT_OUTLINE_FLAT,
     });
     layer.push_text(Text {
-        sections: vec![
-            Section::node_label(label.clone()),
-            Section::node_label(value.display()),
-        ],
-        center: [
-            start.x + NODE_PARAMETER_PADDING,
-            start.y + size.height / 2.0,
-        ],
+        sections: vec![Section::big_value_text(value.display())],
+        center: [start.x + size.width / 2.0, start.y + size.height / 2.0],
         bounds: [size.width, size.height],
-        horizontal_align: HorizontalAlign::Left,
+        horizontal_align: HorizontalAlign::Center,
         vertical_align: VerticalAlign::Center,
     });
-    BoundingBox::new_start_size(start, size, bbox_kind)
+    BoundingBox::new_start_size(start, size, BoundingBoxKind::Unused)
 }

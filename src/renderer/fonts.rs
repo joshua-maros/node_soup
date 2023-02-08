@@ -8,6 +8,7 @@ pub struct Fonts {
 }
 
 pub const FONT_LIGHT: usize = 1;
+pub const FONT_BOLD: usize = 2;
 
 macro_rules! fonts {
     ($($name:expr => $style:expr,)* ) => {
@@ -20,9 +21,10 @@ macro_rules! fonts {
     }
 }
 
-const FONT_DATA: [(&[u8], usize); 2] = fonts!(
+const FONT_DATA: [(&[u8], usize); 3] = fonts!(
     "fonts/Ubuntu-Regular.ttf" => 0,
     "fonts/Ubuntu-Light.ttf" => FONT_LIGHT,
+    "fonts/Ubuntu-Bold.ttf" => FONT_BOLD,
 );
 
 impl Fonts {

@@ -80,8 +80,8 @@ impl App {
         self.previous_mouse_pos = new_pos;
         if let Some(target) = &self.dragging {
             match target {
-                &BoundingBoxKind::InvokeTool(tool_id, target_node) => {
-                    self.drag_tool(tool_id, target_node, d);
+                &BoundingBoxKind::InvokeTool(tool_id) => {
+                    self.drag_tool(tool_id, d);
                 }
                 _ => (),
             }
@@ -105,7 +105,8 @@ impl App {
         self.hovering = Some(candidate.kind.clone());
     }
 
-    fn drag_tool(&mut self, tool: ToolId, target: NodeId, d: (f32, f32)) {
+    fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
+        let target = self.active_node();
         let target_value = self.computation_engine[target].as_literal().clone();
         let encoded_delta = self.computation_engine[self.builtins.compose_vector_2d].evaluate(
             &self.computation_engine,
