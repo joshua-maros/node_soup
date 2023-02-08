@@ -8,15 +8,15 @@ use super::App;
 use crate::{
     engine::{Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Value},
     renderer::{
-        Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
+        IconInstance, Position, RectInstance, Section, Shapes, Size, Text, BOTTOM_OUTLINE_FLAT,
         LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
-        RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT, IconInstance,
+        RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
     },
     theme::{
         FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
-        NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_LABEL_PADDING,
-        NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH, VECTOR_TYPE_FILL_COLOR,
-        VECTOR_TYPE_OUTLINE_COLOR,
+        NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_ICON_PADDING,
+        NODE_ICON_SIZE, NODE_LABEL_PADDING, NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH,
+        PREVIEW_DRAWER_WIDTH, VECTOR_TYPE_FILL_COLOR, VECTOR_TYPE_OUTLINE_COLOR,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -28,6 +28,7 @@ impl App {
         bboxes.push(self.render_preview_drawer(&mut base_layer));
         let mut x = bboxes[0].end.x;
         let mut editor_nodes = vec![(format!("Root"), self.computation_engine.root_node())];
+        let mut index = 0;
         while editor_nodes.len() > 0 {
             let (bbox, next_nodes) = self.render_node_editor(
                 Position {
@@ -35,17 +36,14 @@ impl App {
                     y: 0.0,
                 },
                 &mut base_layer,
+                index,
                 editor_nodes,
             );
             editor_nodes = next_nodes;
             x = bbox.end.x;
             bboxes.push(bbox);
+            index += 1;
         }
-        base_layer.push_icon(IconInstance {
-            position: [0.0, 0.0],
-            size: 128.0,
-            index: 1,
-        });
         self.root_bbox = BoundingBox::new_from_children(bboxes);
 
         let layers = [&base_layer];
@@ -79,6 +77,7 @@ impl App {
         &self,
         start: Position,
         layer: &mut Shapes,
+        index: usize,
         nodes: Vec<(String, NodeId)>,
     ) -> (BoundingBox, Vec<(String, NodeId)>) {
         let mut next_column_nodes = Vec::new();
@@ -88,7 +87,7 @@ impl App {
             let mut next_node = Some(node);
             while let Some(node_id) = next_node {
                 let node = &self.computation_engine[node_id];
-                if self.selected_nodes.contains(&node_id) {
+                if self.selected_node_path.contains(&node_id) {
                     let params = node.collect_parameters(&self.computation_engine);
                     for (index, arg) in node.arguments.iter().enumerate().rev() {
                         next_column_nodes.push((
@@ -105,7 +104,7 @@ impl App {
             }
         }
         for (name, node) in nodes {
-            let node_bbox = self.render_node(Position { x: start.x, y }, layer, node);
+            let node_bbox = self.render_node(Position { x: start.x, y }, layer, node, index);
             let x = start.x;
             y = node_bbox.end.y + INTER_NODE_PADDING;
             layer.push_rect(RectInstance {
@@ -132,7 +131,13 @@ impl App {
         (BoundingBox::new_from_children(bboxes), next_column_nodes)
     }
 
-    fn render_node(&self, start: Position, layer: &mut Shapes, node_id: NodeId) -> BoundingBox {
+    fn render_node(
+        &self,
+        start: Position,
+        layer: &mut Shapes,
+        node_id: NodeId,
+        containing_editor_index: usize,
+    ) -> BoundingBox {
         let node = &self.computation_engine[node_id];
         let Position { x, y } = start;
         let mut label = Text {
@@ -145,12 +150,12 @@ impl App {
         let mut y = y;
         let mut bboxes = Vec::new();
         if let Some(input) = node.input {
-            let bbox = self.render_node(start, layer, input);
+            let bbox = self.render_node(start, layer, input, containing_editor_index);
             y = bbox.end.y;
             y += INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
-        if self.selected_nodes.contains(&node_id) {
+        if self.selected_node_path.contains(&node_id) {
             let bottom = y;
             let parameters = node.collect_parameters(&self.computation_engine);
             for (index, _) in node.arguments.iter().enumerate().rev() {
@@ -159,7 +164,12 @@ impl App {
                     y,
                 };
                 let label = node.operation.param_name(index, &parameters);
-                let param_bbox = render_parameter(start, layer, label);
+                let param_bbox = render_parameter(
+                    start,
+                    layer,
+                    label,
+                    self.selected_node_path.contains(&node_id),
+                );
                 y = param_bbox.end.y + NODE_PARAMETER_PADDING;
                 bboxes.push(param_bbox);
             }
@@ -186,7 +196,18 @@ impl App {
             x: x + NODE_WIDTH,
             y: y + NODE_HEIGHT,
         };
-        // let (fill_color, outline_color) = (VECTOR_TYPE_FILL_COLOR, VECTOR_TYPE_OUTLINE_COLOR);
+        let d = NODE_ICON_PADDING + NODE_ICON_SIZE;
+        layer.push_icon(IconInstance {
+            position: [end.x - d, end.y - d],
+            size: NODE_ICON_SIZE,
+            index: if self.selected_node_path.last() == Some(&node_id) {
+                1
+            } else {
+                0
+            },
+        });
+        // let (fill_color, outline_color) = (VECTOR_TYPE_FILL_COLOR,
+        // VECTOR_TYPE_OUTLINE_COLOR);
         let (fill_color, outline_color) = (FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR);
         layer.push_rect(RectInstance {
             position: [start.x, end.y],
@@ -195,23 +216,25 @@ impl App {
             outline_color,
             outline_modes: LEFT_OUTLINE_DIAGONAL | RIGHT_OUTLINE_ANTIDIAGONAL,
         });
-        let kind = self.default_node_bbox_kind(node_id, &node.operation);
+        let kind = self.default_node_bbox_kind(node_id, &node.operation, containing_editor_index);
         bboxes.push(BoundingBox::new_start_end(Position { x, y }, end, kind));
         layer.push_text(label);
         BoundingBox::new_from_children(bboxes)
     }
 
-    fn default_node_bbox_kind(&self, id: NodeId, operation: &NodeOperation) -> BoundingBoxKind {
+    fn default_node_bbox_kind(
+        &self,
+        id: NodeId,
+        operation: &NodeOperation,
+        containing_editor_index: usize,
+    ) -> BoundingBoxKind {
         match operation {
-            NodeOperation::Literal(Value::Float(..)) => {
-                BoundingBoxKind::InvokeTool(self.builtins.adjust_float_tool, id)
-            }
-            _ => BoundingBoxKind::ToggleNodeSelected(id),
+            _ => BoundingBoxKind::SelectNode(containing_editor_index, id),
         }
     }
 }
 
-fn render_parameter(start: Position, layer: &mut Shapes, name: &str) -> BoundingBox {
+fn render_parameter(start: Position, layer: &mut Shapes, name: &str, caret: bool) -> BoundingBox {
     let width = NODE_WIDTH - NODE_PARAMETER_PADDING - NODE_GUTTER_WIDTH;
     let height = NODE_HEIGHT;
     let kind = BoundingBoxKind::Unused;
@@ -253,7 +276,7 @@ fn render_value_preview_helper(
     bbox_kind: BoundingBoxKind,
 ) -> BoundingBox {
     let size = Size {
-        width: NODE_WIDTH,
+        width: PREVIEW_DRAWER_WIDTH,
         height: NODE_HEIGHT,
     };
     layer.push_rect(RectInstance {

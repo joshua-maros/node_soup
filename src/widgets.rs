@@ -17,7 +17,7 @@ use crate::{
 pub enum BoundingBoxKind {
     InvokeTool(ToolId, NodeId),
     Parent(Vec<BoundingBox>),
-    ToggleNodeSelected(NodeId),
+    SelectNode(usize, NodeId),
     Unused,
 }
 

@@ -23,6 +23,10 @@ impl Position {
             y: self.y.max(other.y),
         }
     }
+
+    pub fn zero() -> Position {
+        Self { x: 0.0, y: 0.0 }
+    }
 }
 
 #[repr(C)]

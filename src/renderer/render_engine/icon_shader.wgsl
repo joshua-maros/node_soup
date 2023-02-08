@@ -47,5 +47,5 @@ fn vertex_shader(vert: VertexInput, icon: IconInstance) -> VertexOutput {
 @fragment
 fn fragment_shader(in: VertexOutput) -> @location(0) vec4<f32> {
     let alpha = textureSample(icon_texture, icon_sampler, in.uv).r;
-    return vec4<f32>(1.0, 1.0, 1.0, alpha);
+    return vec4<f32>(0.5, 0.5, 0.5, alpha);
 }

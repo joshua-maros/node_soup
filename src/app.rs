@@ -31,7 +31,7 @@ pub struct App {
     builtins: BuiltinDefinitions,
     preview_drawer_size: f32,
     root_bbox: BoundingBox,
-    selected_nodes: HashSet<NodeId>,
+    selected_node_path: Vec<NodeId>,
     previous_mouse_pos: Position,
     hovering: Option<BoundingBoxKind>,
     dragging: Option<BoundingBoxKind>,
@@ -55,11 +55,11 @@ impl App {
             builtins,
             preview_drawer_size: 200.0,
             root_bbox: BoundingBox::new_start_end(
-                Position::zeroed(),
-                Position::zeroed(),
+                Position::zero(),
+                Position::zero(),
                 BoundingBoxKind::Unused,
             ),
-            selected_nodes: hashset![],
+            selected_node_path: vec![],
             previous_mouse_pos: Position { x: 0.0, y: 0.0 },
             hovering: None,
             dragging: None,
@@ -90,12 +90,11 @@ impl App {
 
     fn on_mouse_up(&mut self, button: MouseButton) {
         if button == MouseButton::Left {
-            if let Some(BoundingBoxKind::ToggleNodeSelected(node)) = self.dragging {
-                if self.selected_nodes.contains(&node) {
-                    self.selected_nodes.remove(&node);
-                } else {
-                    self.selected_nodes.insert(node);
-                }
+            if let Some(BoundingBoxKind::SelectNode(index, node)) = self.dragging {
+                assert!(index <= self.selected_node_path.len());
+                self.selected_node_path.resize(index, node);
+                self.selected_node_path.push(node);
+                assert_eq!(self.selected_node_path.last(), Some(&node));
             }
             self.dragging = None;
         }
