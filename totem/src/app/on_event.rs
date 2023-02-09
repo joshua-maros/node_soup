@@ -1,3 +1,5 @@
+use std::ops::Bound;
+
 use maplit::hashmap;
 use renderer::{
     winit::{
@@ -9,7 +11,7 @@ use renderer::{
 
 use super::{App, DragTarget};
 use crate::{
-    engine::{NodeId, ParameterId, ToolId, Value},
+    engine::{NodeId, NodeOperation, ParameterId, ToolId, Value},
     widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
 };
 
@@ -73,6 +75,85 @@ impl App {
         }
     }
 
+    fn on_mouse_input(&mut self, button: MouseButton, state: ElementState) {
+        match state {
+            ElementState::Pressed => self.on_mouse_down(button),
+            ElementState::Released => self.on_mouse_up(button),
+        }
+    }
+
+    fn on_mouse_down(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            self.dragging = self.hovering.clone();
+            if let &Some(BoundingBoxKind::InvokeTool(tool_id)) = &self.dragging {
+                let tool = &self.computation_engine.get_tool(tool_id);
+                let target_prototype = tool.target_prototype;
+                if let Ok(targets) =
+                    self.match_prototype_to_node(target_prototype, self.active_node())
+                {
+                    self.tool_targets = targets;
+                } else {
+                    todo!();
+                }
+            }
+        }
+    }
+
+    fn match_prototype_to_node(
+        &self,
+        prototype: NodeId,
+        node: NodeId,
+    ) -> Result<Vec<(ParameterId, NodeId)>, ()> {
+        let prototype = &self.computation_engine[prototype];
+        if let &NodeOperation::Parameter(param_id) = &prototype.operation {
+            if let Some(name) = &self.computation_engine[prototype.arguments[0]]
+                .evaluate(&self.computation_engine, &hashmap![])
+                .as_string()
+            {
+                if name.starts_with("SPECIAL TOOL TARGET ") {
+                    if let NodeOperation::Literal(..) = &self.computation_engine[node].operation {
+                        return Ok(vec![(param_id, node)]);
+                    }
+                } else if name.starts_with("SPECIAL TOOL WILDCARD") {
+                    return Ok(vec![]);
+                }
+            }
+        }
+        let node = &self.computation_engine[node];
+        if prototype.operation == node.operation {
+            assert_eq!(prototype.arguments.len(), node.arguments.len());
+            assert_eq!(prototype.input.is_some(), node.input.is_some());
+            let mut result = vec![];
+            if let Some(prototype_input) = prototype.input {
+                result.append(
+                    &mut self.match_prototype_to_node(prototype_input, node.input.unwrap())?,
+                );
+            }
+            for index in 0..prototype.arguments.len() {
+                result.append(
+                    &mut self.match_prototype_to_node(
+                        prototype.arguments[index],
+                        node.arguments[index],
+                    )?,
+                );
+            }
+            return Ok(result);
+        }
+        Err(())
+    }
+
+    fn on_mouse_up(&mut self, button: MouseButton) {
+        if button == MouseButton::Left {
+            if let Some(BoundingBoxKind::SelectNode(index, node)) = self.dragging {
+                assert!(index <= self.selected_node_path.len());
+                self.selected_node_path.resize(index, node);
+                self.selected_node_path.push(node);
+                assert_eq!(self.selected_node_path.last(), Some(&node));
+            }
+            self.dragging = None;
+        }
+    }
+
     fn on_mouse_move(&mut self, new_pos: Position) {
         let dx = new_pos.x - self.previous_mouse_pos.x;
         let dy = new_pos.y - self.previous_mouse_pos.y;
@@ -106,7 +187,7 @@ impl App {
     }
 
     fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
-        let target = self.active_node();
+        let target = self.tool_targets[0].1;
         let target_value = self.computation_engine[target].as_literal().clone();
         let encoded_delta = self.computation_engine[self.builtins.compose_vector_2d].evaluate(
             &self.computation_engine,
@@ -116,14 +197,14 @@ impl App {
             ],
         );
         let tool = self.computation_engine.get_tool(tool);
-        let new_value = self.computation_engine[tool.mouse_drag_handler].evaluate(
+        let new_data = self.computation_engine[tool.mouse_drag_handler].evaluate(
             &self.computation_engine,
             &hashmap![
-                self.computation_engine.input_parameter_for_reused_nodes => target_value,
+                self.tool_targets[0].0 => target_value,
                 self.builtins.mouse_offset.0 => encoded_delta,
             ],
         );
         let target = &mut self.computation_engine[target];
-        *target.as_literal_mut() = new_value;
+        *target.as_literal_mut() = new_data;
     }
 }

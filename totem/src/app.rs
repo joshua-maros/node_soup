@@ -28,12 +28,12 @@ pub struct App {
     control_flow: ControlFlow,
     computation_engine: Engine,
     builtins: BuiltinDefinitions,
-    preview_drawer_size: f32,
     root_bbox: BoundingBox,
     selected_node_path: Vec<NodeId>,
     previous_mouse_pos: Position,
     hovering: Option<BoundingBoxKind>,
     dragging: Option<BoundingBoxKind>,
+    tool_targets: Vec<(ParameterId, NodeId)>,
 }
 
 impl App {
@@ -52,7 +52,6 @@ impl App {
             control_flow: ControlFlow::Wait,
             computation_engine,
             builtins,
-            preview_drawer_size: 200.0,
             root_bbox: BoundingBox::new_start_end(
                 Position::zero(),
                 Position::zero(),
@@ -62,6 +61,7 @@ impl App {
             previous_mouse_pos: Position { x: 0.0, y: 0.0 },
             hovering: None,
             dragging: None,
+            tool_targets: vec![],
         }
         .run(event_loop)
     }
@@ -72,30 +72,5 @@ impl App {
             self.on_event(event);
             *control_flow = self.control_flow;
         });
-    }
-
-    fn on_mouse_input(&mut self, button: MouseButton, state: ElementState) {
-        match state {
-            ElementState::Pressed => self.on_mouse_down(button),
-            ElementState::Released => self.on_mouse_up(button),
-        }
-    }
-
-    fn on_mouse_down(&mut self, button: MouseButton) {
-        if button == MouseButton::Left {
-            self.dragging = self.hovering.clone();
-        }
-    }
-
-    fn on_mouse_up(&mut self, button: MouseButton) {
-        if button == MouseButton::Left {
-            if let Some(BoundingBoxKind::SelectNode(index, node)) = self.dragging {
-                assert!(index <= self.selected_node_path.len());
-                self.selected_node_path.resize(index, node);
-                self.selected_node_path.push(node);
-                assert_eq!(self.selected_node_path.last(), Some(&node));
-            }
-            self.dragging = None;
-        }
     }
 }

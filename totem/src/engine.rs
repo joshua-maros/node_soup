@@ -28,7 +28,7 @@ pub struct Tool {
 
 pub type ToolId = Id<Tool>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Boolean(bool),
     Integer(i32),
@@ -251,9 +251,17 @@ impl Engine {
         let name = self.push_literal_node("Mouse Offset".to_owned().into());
         let mouse_offset = self.push_parameter(name, default_vec2);
 
-        let prototype = self.push_literal_node(0.0.into());
+        let (prototype, target) = {
+            let target = self.push_simple_parameter("SPECIAL TOOL TARGET Factor", 1.0.into());
+            let input = self.push_simple_parameter("SPECIAL TOOL WILDCARD", 0.0.into());
+            let prototype = self.push_node(Node {
+                operation: NodeOperation::Basic(BasicOp::Multiply),
+                input: Some(input),
+                arguments: vec![target],
+            });
+            (prototype, target)
+        };
         let drag_handler = {
-            let input = self.push_simple_input(0.0.into());
             let mouse_offset = mouse_offset.1;
             let dx = self.push_get_component(mouse_offset, "X");
             let dy = self.push_get_component(mouse_offset, "Y");
@@ -270,7 +278,7 @@ impl Engine {
             });
             self.push_node(Node {
                 operation: NodeOperation::Basic(BasicOp::Add),
-                input: Some(input),
+                input: Some(target),
                 arguments: vec![delta],
             })
         };
@@ -299,7 +307,8 @@ impl Engine {
 
     fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
         let value = self.root_node();
-        let param1 = self.push_simple_parameter("Value", 2.0.into());
+        // let param1 = self.push_simple_parameter("Value", 2.0.into());
+        let param1 = self.push_literal_node(2.0.into());
         let value = self.push_node(Node {
             operation: NodeOperation::Basic(BasicOp::Multiply),
             input: Some(value),
@@ -531,6 +540,7 @@ impl Node {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum NodeOperation {
     Literal(Value),
     Parameter(ParameterId),
@@ -584,6 +594,7 @@ impl NodeOperation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum BasicOp {
     Add,
     Subtract,
