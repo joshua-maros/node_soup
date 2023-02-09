@@ -45,6 +45,7 @@ impl App {
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
         let (computation_engine, builtins) = Engine::new();
+        let selected_node_path = vec![computation_engine.root_node()];
         App {
             window,
             render_engine,
@@ -57,7 +58,7 @@ impl App {
                 Position::zero(),
                 BoundingBoxKind::Unused,
             ),
-            selected_node_path: vec![],
+            selected_node_path,
             previous_mouse_pos: Position { x: 0.0, y: 0.0 },
             hovering: None,
             dragging: None,

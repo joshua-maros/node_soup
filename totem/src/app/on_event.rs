@@ -184,7 +184,7 @@ impl App {
         let arguments = prototype.arguments.clone();
         let (input, bottommost_node) = if let Some(input) = this_input {
             let (input, bottommost_node) = self.instantiate_prototype(input, root_input);
-            (Some(input), Some(bottommost_node))
+            (Some(input), bottommost_node)
         } else {
             (None, None)
         };
@@ -197,7 +197,7 @@ impl App {
                 .collect_vec(),
         };
         let instance = self.computation_engine.push_node(node);
-        (instance, bottommost_node.map(|x| x.unwrap_or(instance)))
+        (instance, Some(bottommost_node.unwrap_or(instance)))
     }
 
     fn on_mouse_up(&mut self, button: MouseButton) {

@@ -58,8 +58,7 @@ impl App {
     }
 
     pub fn active_node(&self) -> NodeId {
-        let active = self.selected_node_path.last().copied();
-        active.unwrap_or(self.computation_engine.root_node())
+        self.selected_node_path.last().copied().unwrap()
     }
 
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
