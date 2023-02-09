@@ -253,7 +253,7 @@ impl Engine {
 
         let (prototype, target) = {
             let target = self.push_simple_parameter("SPECIAL TOOL TARGET Factor", 1.0.into());
-            let input = self.push_simple_parameter("SPECIAL TOOL WILDCARD", 0.0.into());
+            let input = self.push_simple_parameter("SPECIAL TOOL WILDCARD INPUT", 0.0.into());
             let prototype = self.push_node(Node {
                 operation: NodeOperation::Basic(BasicOp::Multiply),
                 input: Some(input),
@@ -400,6 +400,14 @@ impl Engine {
 
     pub fn root_node(&self) -> NodeId {
         self.root_node
+    }
+
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
+        self.nodes.values()
+    }
+
+    pub fn nodes_mut(&mut self) -> impl Iterator<Item = &mut Node> {
+        self.nodes.values_mut()
     }
 }
 

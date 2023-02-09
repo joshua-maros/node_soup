@@ -1,5 +1,6 @@
 use std::ops::Bound;
 
+use itertools::Itertools;
 use maplit::hashmap;
 use renderer::{
     winit::{
@@ -11,8 +12,8 @@ use renderer::{
 
 use super::{App, DragTarget};
 use crate::{
-    engine::{NodeId, NodeOperation, ParameterId, ToolId, Value},
-    widgets::{BoundingBoxKind, EventResponse, Node, Socket, ValueWidget},
+    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId, Value},
+    widgets::{BoundingBoxKind, EventResponse, Socket, ValueWidget},
 };
 
 impl App {
@@ -93,7 +94,11 @@ impl App {
                 {
                     self.tool_targets = targets;
                 } else {
-                    todo!();
+                    let new_active = self.insert_prototype(target_prototype, self.active_node());
+                    *self.selected_node_path.last_mut().unwrap() = new_active;
+                    self.tool_targets = self
+                        .match_prototype_to_node(target_prototype, new_active)
+                        .unwrap();
                 }
             }
         }
@@ -142,8 +147,57 @@ impl App {
         Err(())
     }
 
-    fn insert_prototype(&mut self, prototype: NodeId, after: NodeId) {
-        
+    fn insert_prototype(&mut self, prototype: NodeId, after: NodeId) -> NodeId {
+        let (prototype_instance, instance_bottom) = self.instantiate_prototype(prototype, after);
+        for node in self.computation_engine.nodes_mut() {
+            for arg in node.arguments.iter_mut().chain(node.input.iter_mut()) {
+                if *arg == after {
+                    *arg = prototype_instance;
+                }
+            }
+        }
+        if self.computation_engine.root_node() == after {
+            self.computation_engine.set_root(prototype_instance);
+        }
+        self.computation_engine[instance_bottom.unwrap()].input = Some(after);
+        prototype_instance
+    }
+
+    fn instantiate_prototype(
+        &mut self,
+        prototype_id: NodeId,
+        root_input: NodeId,
+    ) -> (NodeId, Option<NodeId>) {
+        let prototype = &self.computation_engine[prototype_id];
+        if let NodeOperation::Parameter(..) = &prototype.operation {
+            let name = self.computation_engine[prototype.arguments[0]]
+                .evaluate(&self.computation_engine, &hashmap![]);
+            let name = name.as_string().unwrap();
+            if name.starts_with("SPECIAL TOOL TARGET ") {
+                return self.instantiate_prototype(prototype.input.unwrap(), root_input);
+            } else if name.starts_with("SPECIAL TOOL WILDCARD INPUT") {
+                return (prototype_id, None);
+            }
+        }
+        let operation = prototype.operation.clone();
+        let this_input = prototype.input;
+        let arguments = prototype.arguments.clone();
+        let (input, bottommost_node) = if let Some(input) = this_input {
+            let (input, bottommost_node) = self.instantiate_prototype(input, root_input);
+            (Some(input), Some(bottommost_node))
+        } else {
+            (None, None)
+        };
+        let node = Node {
+            operation,
+            input,
+            arguments: arguments
+                .into_iter()
+                .map(|arg| self.instantiate_prototype(arg, root_input).0)
+                .collect_vec(),
+        };
+        let instance = self.computation_engine.push_node(node);
+        (instance, bottommost_node.map(|x| x.unwrap_or(instance)))
     }
 
     fn on_mouse_up(&mut self, button: MouseButton) {
