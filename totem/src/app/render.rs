@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use renderer::{
-    winit::ControlFlow, HorizontalAlign, IconInstance, Position, RectInstance, Section, Shapes,
-    Size, SurfaceError, Text, VerticalAlign, BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL,
-    LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL,
-    RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
+    winit::ControlFlow, HorizontalAlign, IconInstance, ImageInstance, Position, RectInstance,
+    Section, Shapes, Size, SurfaceError, Text, VerticalAlign, BOTTOM_OUTLINE_FLAT,
+    LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
+    RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
 };
 use theme::{
     column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_CORNER_SIZE, NODE_FILL,
@@ -162,12 +162,11 @@ impl App {
             y += INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
-        let output_type = self.type_of_node(node_id);
         let [fill_color, outline_color] = column_colors()[containing_editor_index];
         let bottom = y;
         if self.selected_node_path.contains(&node_id) {
             let parameters = node.collect_parameters(&self.computation_engine);
-            for (index, arg) in node.arguments.iter().enumerate().rev() {
+            for (index, _) in node.arguments.iter().enumerate().rev() {
                 let start = Position {
                     x: x + NODE_GUTTER_WIDTH + NODE_PARAMETER_PADDING,
                     y,
@@ -301,13 +300,10 @@ fn render_parameter(
 }
 
 fn render_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> BoundingBox {
-    let size = Size {
-        width: PREVIEW_WIDGET_SIZE,
-        height: PREVIEW_WIDGET_SIZE,
-    };
+    let size = PREVIEW_WIDGET_SIZE;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
-        size: [size.width, size.height],
+        size: [size, size],
         fill_color: NODE_FILL,
         outline_color: NODE_OUTLINE,
         outline_modes: TOP_OUTLINE_FLAT
@@ -317,10 +313,19 @@ fn render_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> 
     });
     layer.push_text(Text {
         sections: vec![Section::big_value_text(value.display())],
-        center: [start.x + size.width / 2.0, start.y + size.height / 2.0],
-        bounds: [size.width, size.height],
+        center: [start.x + size / 2.0, start.y + size / 2.0],
+        bounds: [size, size],
         horizontal_align: HorizontalAlign::Center,
         vertical_align: VerticalAlign::Center,
     });
+    layer.push_image(ImageInstance {
+        position: [0.0, 0.0],
+        size,
+        index: 0,
+    });
+    let size = Size {
+        width: size,
+        height: size,
+    };
     BoundingBox::new_start_size(start, size, BoundingBoxKind::Unused)
 }

@@ -1,12 +1,13 @@
 use wgpu_glyph::Section;
 
-use super::{IconInstance, Position, RectInstance, Size, Text};
+use super::{IconInstance, Position, RectInstance, Size, Text, image_data::ImageInstance};
 
 #[derive(Clone, Debug)]
 pub struct Shapes {
     pub rects: Vec<RectInstance>,
     pub texts: Vec<Text>,
     pub icons: Vec<IconInstance>,
+    pub images: Vec<ImageInstance>,
 }
 
 impl Shapes {
@@ -15,6 +16,7 @@ impl Shapes {
             rects: vec![],
             texts: vec![],
             icons: vec![],
+            images: vec![],
         }
     }
 
@@ -30,9 +32,14 @@ impl Shapes {
         self.icons.push(icon)
     }
 
+    pub fn push_image(&mut self, image: ImageInstance) {
+        self.images.push(image)
+    }
+
     pub fn append(&mut self, other: Self) {
         self.rects.append(&mut { other.rects });
         self.texts.append(&mut { other.texts });
         self.icons.append(&mut { other.icons });
+        self.images.append(&mut { other.images });
     }
 }

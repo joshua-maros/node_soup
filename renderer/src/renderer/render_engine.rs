@@ -1,11 +1,17 @@
+mod clear;
 mod create;
 mod render;
+mod render_icons;
+mod render_images;
 mod render_rects;
 mod render_text;
-mod clear;
-mod render_icons;
 
-use wgpu::{util::StagingBelt, Buffer, RenderPipeline, TextureView, CommandEncoder, BindGroup};
+use std::num::NonZeroU32;
+
+use wgpu::{
+    util::StagingBelt, BindGroup, Buffer, CommandEncoder, ImageDataLayout, RenderPipeline, Texture,
+    TextureView, ImageCopyTexture, Origin3d, TextureAspect,
+};
 
 use super::{fonts::Fonts, render_device::RenderDevice, render_target::RenderTarget, Shapes};
 
@@ -16,6 +22,8 @@ struct ReadOnlyResources {
     rect_pipeline: RenderPipeline,
     icon_pipeline: RenderPipeline,
     icon_texture_bind_group: BindGroup,
+    image_pipeline: RenderPipeline,
+    image_textures: [(Texture, BindGroup); 16],
 }
 
 struct MutableResources {
@@ -32,4 +40,30 @@ struct ActiveRenderInfo<'a> {
 pub struct RenderEngine {
     ror: ReadOnlyResources,
     mr: MutableResources,
+}
+
+impl RenderEngine {
+    // Data is assumed to be in sRGB format.
+    pub fn upload_image(&self, index: usize, data: &[[u8; 4]]) {
+        self.ror.device.queue().write_texture(
+            ImageCopyTexture {
+                texture: &self.ror.image_textures[index].0,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: TextureAspect::All,
+            },
+            bytemuck::cast_slice(data),
+            ImageDataLayout {
+                offset: 0,
+                bytes_per_row: NonZeroU32::new(4 * 360),
+                rows_per_image: NonZeroU32::new(360),
+                ..Default::default()
+            },
+            wgpu::Extent3d {
+                width: 360,
+                height: 360,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
 }
