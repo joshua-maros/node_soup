@@ -182,7 +182,6 @@ pub struct Engine {
     node_ids: IdCreator<Node>,
     parameter_ids: IdCreator<Parameter>,
     tool_ids: IdCreator<Tool>,
-    pub input_parameter_for_reused_nodes: ParameterId,
 }
 
 pub struct BuiltinDefinitions {
@@ -217,7 +216,6 @@ impl Engine {
         let mut node_ids = IdCreator::new();
         let root_node = node_ids.next();
         let mut parameter_ids = IdCreator::new();
-        let input_parameter_for_reused_nodes = parameter_ids.next();
         let tool_ids = IdCreator::new();
         let mut this = Self {
             nodes: hashmap! [root_node => start_node],
@@ -226,7 +224,6 @@ impl Engine {
             node_ids,
             parameter_ids,
             tool_ids,
-            input_parameter_for_reused_nodes,
         };
         let builtins = this.make_builtins();
         this.setup_demo(&builtins);
@@ -244,7 +241,10 @@ impl Engine {
         );
         let zero = self.push_literal_node(0.0.into());
         let default_vec2 = self.push_node(Node {
-            operation: NodeOperation::ReuseNode(compose_vector_2d),
+            operation: NodeOperation::CustomNode {
+                result: compose_vector_2d,
+                input: None,
+            },
             input: None,
             arguments: vec![zero, zero],
         });
@@ -392,19 +392,6 @@ impl Engine {
         (id, node_id)
     }
 
-    pub fn push_simple_input(&mut self, default_value: Value) -> NodeId {
-        let param_default = self.push_literal_node(default_value);
-        self.push_input(param_default)
-    }
-
-    pub fn push_input(&mut self, default_value: NodeId) -> NodeId {
-        self.push_node(Node {
-            operation: NodeOperation::InputParameter,
-            input: Some(default_value),
-            arguments: vec![],
-        })
-    }
-
     pub fn set_root(&mut self, node: NodeId) {
         self.root_node = node;
         let mut root_parameters = Vec::new();
@@ -457,10 +444,6 @@ impl Node {
                 .get(id)
                 .cloned()
                 .unwrap_or_else(|| engine[self.input.unwrap()].evaluate(engine, arguments)),
-            NodeOperation::InputParameter => arguments
-                .get(&engine.input_parameter_for_reused_nodes)
-                .cloned()
-                .unwrap(),
             NodeOperation::Basic(op) => {
                 let a = engine[self.input.unwrap()].evaluate(engine, arguments);
                 let b = engine[self.arguments[0]].evaluate(engine, arguments);
@@ -505,20 +488,20 @@ impl Node {
                     panic!("Cannot extract components from a non-struct value!")
                 }
             }
-            NodeOperation::ReuseNode(node) => {
-                let node = &engine[*node];
+            NodeOperation::CustomNode { result, input } => {
+                let result = &engine[*result];
                 let mut next_arguments = HashMap::new();
-                if let Some(input) = self.input {
-                    let value = engine[input].evaluate(engine, arguments);
-                    next_arguments.insert(engine.input_parameter_for_reused_nodes, value);
+                if let &Some(input) = input {
+                    let value = engine[self.input.unwrap()].evaluate(engine, arguments);
+                    next_arguments.insert(input, value);
                 }
-                let params = node.collect_parameters(engine);
+                let params = result.collect_parameters(engine);
                 for (index, param) in params.into_iter().enumerate() {
                     let arg = self.arguments[index];
                     let arg = engine[arg].evaluate(engine, arguments);
                     next_arguments.insert(param.id, arg);
                 }
-                node.evaluate(engine, &next_arguments)
+                result.evaluate(engine, &next_arguments)
             }
         }
     }
@@ -544,12 +527,14 @@ impl Node {
 pub enum NodeOperation {
     Literal(Value),
     Parameter(ParameterId),
-    InputParameter,
     Basic(BasicOp),
     ComposeStruct,
     ComposeColor,
     GetComponent(String),
-    ReuseNode(NodeId),
+    CustomNode {
+        result: NodeId,
+        input: Option<ParameterId>,
+    },
 }
 
 impl NodeOperation {
@@ -558,12 +543,11 @@ impl NodeOperation {
         match self {
             Literal(value) => value.display(),
             Parameter(..) => format!("Parameter"),
-            InputParameter => format!("Input"),
             Basic(op) => op.name().to_owned(),
             ComposeStruct => format!("Compose Struct"),
             ComposeColor => format!("Compose Color"),
             GetComponent(component_name) => format!("{} Component", component_name),
-            ReuseNode(..) => format!("This Name Shouldn't Show Up"),
+            CustomNode { .. } => format!("This Name Shouldn't Show Up"),
         }
     }
 
@@ -571,7 +555,14 @@ impl NodeOperation {
         use NodeOperation::*;
         match self {
             ComposeStruct => todo!(),
-            ReuseNode(..) => &parameters[index].name,
+            CustomNode { input, .. } => {
+                &parameters
+                    .iter()
+                    .filter(|p| *input != Some(p.id))
+                    .nth(index)
+                    .unwrap()
+                    .name
+            }
             _ => {
                 let names = self.param_names();
                 names[index.min(names.len() - 1)]
@@ -584,12 +575,11 @@ impl NodeOperation {
         match self {
             Literal(..) => &[],
             Parameter(..) => &["Name"],
-            InputParameter => &[],
             Basic(op) => op.param_names(),
             ComposeStruct => &["This Label Shouldn't Show Up"],
             ComposeColor => &["Channel 1", "Channel 2", "Channel 3"],
             GetComponent(..) => &[],
-            ReuseNode(..) => &["This Label Shouldn't Show Up"],
+            CustomNode { .. } => &["This Label Shouldn't Show Up"],
         }
     }
 }

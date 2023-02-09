@@ -142,6 +142,10 @@ impl App {
         Err(())
     }
 
+    fn insert_prototype(&mut self, prototype: NodeId, after: NodeId) {
+        
+    }
+
     fn on_mouse_up(&mut self, button: MouseButton) {
         if button == MouseButton::Left {
             if let Some(BoundingBoxKind::SelectNode(index, node)) = self.dragging {
