@@ -47,7 +47,7 @@ impl Value {
         if let &Value::Float(value) = self {
             util::pretty_format_number(value)
         } else {
-            self.cast(BuiltinType::String)
+            self.cast(BaseType::String)
                 .unwrap()
                 .as_string()
                 .unwrap()
@@ -81,8 +81,8 @@ impl From<bool> for Value {
 }
 
 impl Value {
-    pub fn r#type(&self) -> BuiltinType {
-        use BuiltinType::*;
+    pub fn r#type(&self) -> BaseType {
+        use BaseType::*;
         match self {
             Self::Boolean(..) => Boolean,
             Self::Integer(..) => Integer,
@@ -92,8 +92,8 @@ impl Value {
         }
     }
 
-    pub fn cast(&self, to: BuiltinType) -> Option<Self> {
-        use BuiltinType::*;
+    pub fn cast(&self, to: BaseType) -> Option<Self> {
+        use BaseType::*;
         match self {
             &Self::Boolean(value) => match to {
                 Boolean => Some(value.into()),
@@ -133,33 +133,30 @@ impl Value {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BuiltinType {
+pub enum BaseType {
     Boolean,
     Integer,
     Float,
     String,
-    Type,
 }
 
-impl BuiltinType {
+impl BaseType {
     pub fn name(self) -> &'static str {
-        use BuiltinType::*;
+        use BaseType::*;
         match self {
             Boolean => "Boolean",
             Integer => "Integer",
             Float => "Float",
             String => "String",
-            Type => "Type",
         }
     }
 
     fn rank(self) -> i32 {
         match self {
-            BuiltinType::Boolean => 0,
-            BuiltinType::Integer => 1,
-            BuiltinType::Float => 2,
-            BuiltinType::String => 3,
-            BuiltinType::Type => 4,
+            BaseType::Boolean => 0,
+            BaseType::Integer => 1,
+            BaseType::Float => 2,
+            BaseType::String => 3,
         }
     }
 
@@ -168,6 +165,23 @@ impl BuiltinType {
             self
         } else {
             other
+        }
+    }
+}
+
+pub struct Type {
+    pub base: BaseType,
+    pub deferred_parameters: Vec<ParameterId>,
+}
+
+impl Type {
+}
+
+impl From<BaseType> for Type {
+    fn from(base: BaseType) -> Self {
+        Self {
+            base,
+            deferred_parameters: vec![],
         }
     }
 }
@@ -527,6 +541,19 @@ impl Node {
             literal
         } else {
             panic!("Not a literal.")
+        }
+    }
+
+    pub fn output_type(&self, type_of_other_node: impl FnOnce(NodeId) -> Type) -> Type {
+        use NodeOperation::*;
+        match &self.operation {
+            Literal(lit) => lit.r#type().into(),
+            Parameter(..) => type_of_other_node(self.input.unwrap()),
+            Basic(..) => type_of_other_node(self.input.unwrap()),
+            ComposeStruct => todo!(),
+            ComposeColor => todo!(),
+            GetComponent(_) => todo!(),
+            &CustomNode { result, .. } => type_of_other_node(result),
         }
     }
 }

@@ -7,16 +7,18 @@ use renderer::{
     RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
 };
 use theme::{
-    FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR, INTER_NODE_PADDING, INTER_PANEL_PADDING,
-    NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_ICON_PADDING, NODE_ICON_SIZE,
-    NODE_LABEL_PADDING, NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE,
-    TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE, TOOL_ICON_SIZE, VECTOR_TYPE_FILL_COLOR,
-    VECTOR_TYPE_OUTLINE_COLOR,
+    column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_CORNER_SIZE, NODE_FILL,
+    NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_PADDING,
+    NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING,
+    TOOL_BUTTON_SIZE, TOOL_ICON_SIZE,
 };
 
 use super::App;
 use crate::{
-    engine::{Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Value},
+    engine::{
+        BaseType, Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Type,
+        Value,
+    },
     widgets::{BoundingBox, BoundingBoxKind},
 };
 
@@ -111,11 +113,12 @@ impl App {
             let node_bbox = self.render_node(Position { x: start.x, y }, layer, node, index);
             let x = start.x;
             y = node_bbox.end.y + INTER_NODE_PADDING;
+            let [fill_color, outline_color] = column_colors()[index];
             layer.push_rect(RectInstance {
                 position: [x, y],
                 size: [NODE_WIDTH, NODE_HEIGHT],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
+                fill_color,
+                outline_color,
                 outline_modes: TOP_OUTLINE_FLAT
                     | BOTTOM_OUTLINE_FLAT
                     | LEFT_OUTLINE_FLAT
@@ -159,10 +162,12 @@ impl App {
             y += INTER_NODE_PADDING;
             bboxes.push(bbox);
         }
+        let output_type = self.type_of_node(node_id);
+        let [fill_color, outline_color] = column_colors()[containing_editor_index];
         let bottom = y;
         if self.selected_node_path.contains(&node_id) {
             let parameters = node.collect_parameters(&self.computation_engine);
-            for (index, _) in node.arguments.iter().enumerate().rev() {
+            for (index, arg) in node.arguments.iter().enumerate().rev() {
                 let start = Position {
                     x: x + NODE_GUTTER_WIDTH + NODE_PARAMETER_PADDING,
                     y,
@@ -172,7 +177,7 @@ impl App {
                     start,
                     layer,
                     label,
-                    self.selected_node_path.contains(&node_id),
+                    column_colors()[containing_editor_index + 1],
                 );
                 y = param_bbox.end.y + NODE_PARAMETER_PADDING;
                 bboxes.push(param_bbox);
@@ -182,23 +187,23 @@ impl App {
         layer.push_rect(RectInstance {
             position: [x, y],
             size: [NODE_GUTTER_WIDTH, NODE_HEIGHT],
-            fill_color: NODE_FILL,
-            outline_color: NODE_OUTLINE,
+            fill_color,
+            outline_color,
             outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
         });
         layer.push_rect(RectInstance {
             position: [x + NODE_GUTTER_WIDTH, y],
             size: [NODE_WIDTH - NODE_GUTTER_WIDTH, NODE_HEIGHT],
-            fill_color: NODE_FILL,
-            outline_color: NODE_OUTLINE,
+            fill_color,
+            outline_color,
             outline_modes: RIGHT_OUTLINE_FLAT | TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
         });
         if self.selected_node_path.contains(&node_id) {
             layer.push_rect(RectInstance {
                 position: [start.x, bottom],
                 size: [NODE_GUTTER_WIDTH, y - bottom + 1.0],
-                fill_color: NODE_FILL,
-                outline_color: NODE_OUTLINE,
+                fill_color,
+                outline_color,
                 outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
             });
         }
@@ -213,9 +218,6 @@ impl App {
             size: NODE_ICON_SIZE,
             index: if selected { 1 } else { 0 },
         });
-        // let (fill_color, outline_color) = (VECTOR_TYPE_FILL_COLOR,
-        // VECTOR_TYPE_OUTLINE_COLOR);
-        let (fill_color, outline_color) = (FLOAT_TYPE_FILL_COLOR, FLOAT_TYPE_OUTLINE_COLOR);
         layer.push_rect(RectInstance {
             position: [start.x, end.y],
             size: [INTER_NODE_PADDING * 2.0, INTER_NODE_PADDING],
@@ -245,8 +247,8 @@ impl App {
         layer.push_rect(RectInstance {
             position: [start.x, start.y],
             size: [TOOL_BUTTON_SIZE, TOOL_BUTTON_SIZE],
-            fill_color: FLOAT_TYPE_FILL_COLOR,
-            outline_color: FLOAT_TYPE_OUTLINE_COLOR,
+            fill_color: column_colors()[0][0],
+            outline_color: column_colors()[0][1],
             outline_modes: TOP_OUTLINE_FLAT
                 | BOTTOM_OUTLINE_FLAT
                 | LEFT_OUTLINE_FLAT
@@ -269,15 +271,20 @@ impl App {
     }
 }
 
-fn render_parameter(start: Position, layer: &mut Shapes, name: &str, caret: bool) -> BoundingBox {
+fn render_parameter(
+    start: Position,
+    layer: &mut Shapes,
+    name: &str,
+    [fill_color, outline_color]: [[f32; 3]; 2],
+) -> BoundingBox {
     let width = NODE_WIDTH - NODE_PARAMETER_PADDING - NODE_GUTTER_WIDTH;
     let height = NODE_HEIGHT;
     let kind = BoundingBoxKind::Unused;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
         size: [width, height],
-        fill_color: NODE_FILL,
-        outline_color: NODE_OUTLINE,
+        fill_color,
+        outline_color,
         outline_modes: LEFT_OUTLINE_FLAT
             | RIGHT_OUTLINE_FLAT
             | TOP_OUTLINE_FLAT

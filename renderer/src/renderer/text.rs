@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use theme::{BIG_VALUE_COLOR, BIG_VALUE_SIZE, NODE_LABEL_COLOR, NODE_LABEL_SIZE};
+use theme::{big_value_color, node_label_color, BIG_VALUE_SIZE, NODE_LABEL_SIZE};
 use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
 
 use super::fonts::{FONT_BOLD, FONT_LIGHT};
@@ -42,7 +42,7 @@ impl Section {
     pub fn node_label(text: String) -> Self {
         Self {
             text,
-            color: NODE_LABEL_COLOR,
+            color: node_label_color(),
             size: NODE_LABEL_SIZE,
             style: FONT_LIGHT,
         }
@@ -51,7 +51,7 @@ impl Section {
     pub fn big_value_text(text: String) -> Self {
         Self {
             text,
-            color: BIG_VALUE_COLOR,
+            color: big_value_color(),
             size: BIG_VALUE_SIZE,
             style: FONT_BOLD,
         }
