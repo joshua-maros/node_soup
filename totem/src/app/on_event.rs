@@ -94,7 +94,19 @@ impl App {
                 {
                     self.tool_targets = targets;
                 } else {
+                    let should_collapse = if let NodeOperation::Literal(..) =
+                        &self.computation_engine[self.active_node()].operation
+                    {
+                        true
+                    } else {
+                        false
+                    };
                     let new_active = self.insert_prototype(target_prototype, self.active_node());
+                    if should_collapse {
+                        self.collapse_to_literal = Some(new_active)
+                    } else {
+                        self.collapse_to_literal = None;
+                    }
                     *self.selected_node_path.last_mut().unwrap() = new_active;
                     self.tool_targets = self
                         .match_prototype_to_node(target_prototype, new_active)
@@ -149,18 +161,27 @@ impl App {
 
     fn insert_prototype(&mut self, prototype: NodeId, after: NodeId) -> NodeId {
         let (prototype_instance, instance_bottom) = self.instantiate_prototype(prototype, after);
+        self.replace_references(after, prototype_instance);
+        self.computation_engine[instance_bottom.unwrap()].input = Some(after);
+        prototype_instance
+    }
+
+    fn replace_references(&mut self, to: NodeId, with: NodeId) {
         for node in self.computation_engine.nodes_mut() {
             for arg in node.arguments.iter_mut().chain(node.input.iter_mut()) {
-                if *arg == after {
-                    *arg = prototype_instance;
+                if *arg == to {
+                    *arg = with;
                 }
             }
         }
-        if self.computation_engine.root_node() == after {
-            self.computation_engine.set_root(prototype_instance);
+        if self.computation_engine.root_node() == to {
+            self.computation_engine.set_root(with);
         }
-        self.computation_engine[instance_bottom.unwrap()].input = Some(after);
-        prototype_instance
+        if let Some(position) = self.selected_node_path.iter().position(|node| *node == to) {
+            self.selected_node_path.resize(position, to);
+            self.selected_node_path.push(with);
+            assert!(!self.selected_node_path.contains(&to));
+        }
     }
 
     fn instantiate_prototype(
@@ -207,6 +228,13 @@ impl App {
                 self.selected_node_path.resize(index, node);
                 self.selected_node_path.push(node);
                 assert_eq!(self.selected_node_path.last(), Some(&node));
+            } else if let Some(BoundingBoxKind::InvokeTool(..)) = self.dragging {
+                if let Some(output) = self.collapse_to_literal {
+                    let value = self.computation_engine[output]
+                        .evaluate(&self.computation_engine, &hashmap![]);
+                    let literal = self.computation_engine.push_literal_node(value);
+                    self.replace_references(output, literal);
+                }
             }
             self.dragging = None;
         }

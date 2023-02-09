@@ -34,6 +34,7 @@ pub struct App {
     hovering: Option<BoundingBoxKind>,
     dragging: Option<BoundingBoxKind>,
     tool_targets: Vec<(ParameterId, NodeId)>,
+    collapse_to_literal: Option<NodeId>,
 }
 
 impl App {
@@ -63,6 +64,7 @@ impl App {
             hovering: None,
             dragging: None,
             tool_targets: vec![],
+            collapse_to_literal: None,
         }
         .run(event_loop)
     }
