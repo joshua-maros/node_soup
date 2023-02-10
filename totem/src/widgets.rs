@@ -8,7 +8,7 @@ use theme::{
     NODE_PARAMETER_PADDING, NODE_WIDTH,
 };
 
-use crate::engine::{NodeId, ParameterId, ToolId, Value};
+use crate::engine::{NodeId, ParameterId, ToolId, Value2};
 
 #[derive(Clone, Debug)]
 pub enum BoundingBoxKind {
@@ -104,12 +104,12 @@ impl Node {
 
 pub struct SimpleValueWidget {
     pub label: String,
-    pub value: Value,
+    pub value: Value2,
 }
 
 pub struct EventResponse {
     pub request_focus: bool,
-    pub new_value: Option<Value>,
+    pub new_value: Option<Value2>,
 }
 
 impl Default for EventResponse {

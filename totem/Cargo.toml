@@ -7,6 +7,9 @@ version = "0.1.0"
 
 [dependencies]
 bytemuck = "1.13.0"
+cranelift = "0.92.0"
+cranelift-jit = "0.92.0"
+cranelift-module = "0.92.0"
 env_logger = "0.10.0"
 itertools = "0.10.5"
 log = "0.4.17"

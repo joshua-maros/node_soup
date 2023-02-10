@@ -4,25 +4,125 @@ use std::{
     rc::Rc,
 };
 
+use cranelift::{
+    codegen::{ir::Function, Context},
+    prelude::*,
+};
+use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::{DataContext, FuncId, Linkage, Module};
 use itertools::Itertools;
 use maplit::hashmap;
 use renderer::{Position, Shapes};
 
 use crate::{
     bytecode::{
-        BinaryOp, BytecodeInstruction, BytecodeProgram, Heap, IntegerOp, MemoryLayout, UnaryOp,
-        Usage,
+        BinaryOp, BytecodeInstruction, BytecodeProgram, FloatOp, Heap, IntegerOp, MemoryLayout,
+        UnaryOp, Usage,
     },
     util::{self, Id, IdCreator},
     widgets::{self, SimpleValueWidget},
 };
+
+struct CodeGenerationContext {
+    builder_c: FunctionBuilderContext,
+    codegen_c: Context,
+    data_c: DataContext,
+    module: JITModule,
+    functions: HashMap<NodeId, FuncId>,
+}
+
+impl CodeGenerationContext {
+    fn new() -> Self {
+        let builder = JITBuilder::new(cranelift_module::default_libcall_names());
+        let module = JITModule::new(builder.unwrap());
+        Self {
+            builder_c: FunctionBuilderContext::new(),
+            codegen_c: Context::new(),
+            data_c: DataContext::new(),
+            module,
+            functions: HashMap::new(),
+        }
+    }
+
+    fn get_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> FuncId {
+        *self.functions.entry(node).or_insert_with(|| {
+            let sig = Signature {
+                params: vec![],
+                returns: vec![AbiParam::new(types::F32)],
+                call_conv: isa::CallConv::Fast,
+            };
+            self.module
+                .declare_function("", Linkage::Export, &sig)
+                .unwrap()
+        })
+    }
+
+    fn compile_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
+        let func_id = self.get_node_implementation(nodes, node);
+        let mut builder = FunctionBuilder::new(&mut self.codegen_c.func, &mut self.builder_c);
+        let root_block = builder.create_block();
+        builder.switch_to_block(root_block);
+        let retval = Self::compile_node_to_instructions(&mut builder, nodes, node);
+        builder.ins().return_(&[retval]);
+        builder.seal_block(root_block);
+        builder.finalize();
+        self.module.define_function(func_id, &mut self.codegen_c);
+    }
+
+    fn execute_node_implementation<I, O>(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        node: NodeId,
+        input: I,
+    ) -> O {
+        self.module.finalize_definitions();
+        let id = self.get_node_implementation(nodes, node);
+        let func = self.module.get_finalized_function(id);
+        let func = unsafe { std::mem::transmute::<_, fn(I) -> O>(func) };
+        func(input)
+    }
+
+    fn compile_node_to_instructions(
+        builder: &mut FunctionBuilder,
+        nodes: &HashMap<NodeId, Node>,
+        node: NodeId,
+    ) -> Value {
+        let node = &nodes[&node];
+        match &node.operation {
+            NodeOperation::Literal(value) => match value {
+                Value2::Boolean(_) => todo!(),
+                &Value2::Integer(value) => builder.ins().iconst(types::I32, value as i64),
+                &Value2::Float(value) => builder.ins().f32const(value),
+                Value2::String(_) => todo!(),
+                Value2::Struct { name, components } => todo!(),
+                Value2::Invalid => todo!(),
+            },
+            NodeOperation::Parameter(_) => todo!(),
+            NodeOperation::Basic(op) => {
+                let input = Self::compile_node_to_instructions(builder, nodes, node.input.unwrap());
+                let argument =
+                    Self::compile_node_to_instructions(builder, nodes, node.arguments[0]);
+                match op {
+                    BasicOp::Add => builder.ins().fadd(input, argument),
+                    BasicOp::Subtract => builder.ins().fsub(input, argument),
+                    BasicOp::Multiply => builder.ins().fmul(input, argument),
+                    BasicOp::Divide => builder.ins().fdiv(input, argument),
+                }
+            }
+            NodeOperation::ComposeStruct => todo!(),
+            NodeOperation::ComposeColor => todo!(),
+            NodeOperation::GetComponent(_) => todo!(),
+            NodeOperation::CustomNode { result, input } => todo!(),
+        }
+    }
+}
 
 pub struct Parameter {}
 
 pub struct ParameterDescription {
     pub id: ParameterId,
     pub name: String,
-    pub default: Value,
+    pub default: Value2,
 }
 
 pub struct Tool {
@@ -33,22 +133,22 @@ pub struct Tool {
 pub type ToolId = Id<Tool>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Value {
+pub enum Value2 {
     Boolean(bool),
     Integer(i32),
     Float(f32),
     String(String),
     Struct {
         name: String,
-        components: Vec<(String, Value)>,
+        components: Vec<(String, Value2)>,
     },
     // Division by zero, index out of bounds, etc.
     Invalid,
 }
 
-impl Value {
+impl Value2 {
     pub fn display(&self) -> String {
-        if let &Value::Float(value) = self {
+        if let &Value2::Float(value) = self {
             util::pretty_format_number(value)
         } else {
             self.cast(BaseType::String)
@@ -61,22 +161,22 @@ impl Value {
 
     fn size(&self) -> usize {
         match self {
-            Value::Boolean(..) => todo!(),
-            Value::Integer(..) => 1,
-            Value::Float(..) => 1,
-            Value::String(_) => todo!(),
-            Value::Struct { components, .. } => components.iter().map(|c| c.1.size()).sum(),
-            Value::Invalid => todo!(),
+            Value2::Boolean(..) => todo!(),
+            Value2::Integer(..) => 1,
+            Value2::Float(..) => 1,
+            Value2::String(_) => todo!(),
+            Value2::Struct { components, .. } => components.iter().map(|c| c.1.size()).sum(),
+            Value2::Invalid => todo!(),
         }
     }
 
     fn layout(&self, start: usize) -> MemoryLayout {
         match self {
-            Value::Boolean(..) => todo!(),
-            Value::Integer(..) => MemoryLayout::Integer(start),
-            Value::Float(..) => MemoryLayout::Float(start),
-            Value::String(_) => todo!(),
-            Value::Struct { components, .. } => {
+            Value2::Boolean(..) => todo!(),
+            Value2::Integer(..) => MemoryLayout::Integer(start),
+            Value2::Float(..) => MemoryLayout::Float(start),
+            Value2::String(_) => todo!(),
+            Value2::Struct { components, .. } => {
                 let mut layout_components = Vec::new();
                 let mut start = start;
                 for (name, value) in components {
@@ -88,7 +188,7 @@ impl Value {
                     components: layout_components,
                 }
             }
-            Value::Invalid => todo!(),
+            Value2::Invalid => todo!(),
         }
     }
 
@@ -132,31 +232,31 @@ impl Value {
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Value2 {
     fn from(v: String) -> Self {
         Self::String(v)
     }
 }
 
-impl From<f32> for Value {
+impl From<f32> for Value2 {
     fn from(v: f32) -> Self {
         Self::Float(v)
     }
 }
 
-impl From<i32> for Value {
+impl From<i32> for Value2 {
     fn from(v: i32) -> Self {
         Self::Integer(v)
     }
 }
 
-impl From<bool> for Value {
+impl From<bool> for Value2 {
     fn from(v: bool) -> Self {
         Self::Boolean(v)
     }
 }
 
-impl Value {
+impl Value2 {
     pub fn r#type(&self) -> BaseType {
         use BaseType::*;
         match self {
@@ -250,14 +350,14 @@ impl BaseType {
     }
 }
 
-pub struct Type {
+pub struct Type2 {
     pub base: BaseType,
     pub deferred_parameters: Vec<ParameterId>,
 }
 
-impl Type {}
+impl Type2 {}
 
-impl From<BaseType> for Type {
+impl From<BaseType> for Type2 {
     fn from(base: BaseType) -> Self {
         Self {
             base,
@@ -276,6 +376,7 @@ pub struct Engine {
     node_ids: IdCreator<Node>,
     parameter_ids: IdCreator<Parameter>,
     tool_ids: IdCreator<Tool>,
+    context: CodeGenerationContext,
 }
 
 pub struct BuiltinDefinitions {
@@ -313,6 +414,7 @@ impl Engine {
         let root_node = node_ids.next();
         let mut parameter_ids = IdCreator::new();
         let tool_ids = IdCreator::new();
+        let context = CodeGenerationContext::new();
         let mut this = Self {
             nodes: hashmap! [root_node => start_node],
             tools: hashmap![],
@@ -320,6 +422,7 @@ impl Engine {
             node_ids,
             parameter_ids,
             tool_ids,
+            context,
         };
         let builtins = this.make_builtins();
         this.setup_demo(&builtins);
@@ -327,7 +430,7 @@ impl Engine {
     }
 
     fn make_builtins(&mut self) -> BuiltinDefinitions {
-        let default_struct = Value::Struct {
+        let default_struct = Value2::Struct {
             name: "Empty Struct".to_owned(),
             components: vec![],
         };
@@ -410,6 +513,10 @@ impl Engine {
         }
     }
 
+    pub fn compile(&mut self, node: NodeId) {
+        self.context.compile_node_implementation(&self.nodes, node);
+    }
+
     fn add_tool(&mut self, tool: Tool) -> ToolId {
         let id = self.tool_ids.next();
         self.tools.insert(id, tool);
@@ -421,27 +528,28 @@ impl Engine {
     }
 
     fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
-        // let value = self.root_node();
-        // let param1 = self.push_literal_node(2.0.into());
-        // let value = self.push_node(Node {
-        //     operation: NodeOperation::Basic(BasicOp::Multiply),
-        //     input: Some(value),
-        //     arguments: vec![param1],
-        // });
-        // let param2 = self.push_simple_parameter("Value", 123.0.into());
-        // let root = self.push_node(Node {
-        //     operation: NodeOperation::Basic(BasicOp::Add),
-        //     input: Some(value),
-        //     arguments: vec![param2],
-        // });
-
-        let value = self.push_get_component(builtins.display_position.1, "X");
-        let divisor = self.push_literal_node(360.0.into());
-        let root = self.push_node(Node {
-            operation: NodeOperation::Basic(BasicOp::Divide),
+        let value = self.root_node();
+        let param1 = self.push_literal_node(2.0.into());
+        let value = self.push_node(Node {
+            operation: NodeOperation::Basic(BasicOp::Multiply),
             input: Some(value),
-            arguments: vec![divisor],
+            arguments: vec![param1],
         });
+        // let param2 = self.push_simple_parameter("Value", 123.0.into());
+        let param2 = self.push_literal_node(123.0.into());
+        let root = self.push_node(Node {
+            operation: NodeOperation::Basic(BasicOp::Add),
+            input: Some(value),
+            arguments: vec![param2],
+        });
+
+        // let value = self.push_get_component(builtins.display_position.1, "X");
+        // let divisor = self.push_literal_node(360.0.into());
+        // let root = self.push_node(Node {
+        //     operation: NodeOperation::Basic(BasicOp::Divide),
+        //     input: Some(value),
+        //     arguments: vec![divisor],
+        // });
 
         self.set_root(root);
     }
@@ -449,7 +557,7 @@ impl Engine {
     pub fn push_simple_struct_composer(
         &mut self,
         name: &str,
-        default_components: Vec<(&str, Value)>,
+        default_components: Vec<(&str, Value2)>,
     ) -> (NodeId, Vec<ParameterId>) {
         let mut args = vec![self.push_literal_node(name.to_owned().into())];
         let mut parameters = vec![];
@@ -475,7 +583,7 @@ impl Engine {
         id
     }
 
-    pub fn push_literal_node(&mut self, value: Value) -> NodeId {
+    pub fn push_literal_node(&mut self, value: Value2) -> NodeId {
         self.push_node(Node {
             operation: NodeOperation::Literal(value),
             input: None,
@@ -491,7 +599,7 @@ impl Engine {
         })
     }
 
-    pub fn push_simple_parameter(&mut self, name: &str, default_value: Value) -> NodeId {
+    pub fn push_simple_parameter(&mut self, name: &str, default_value: Value2) -> NodeId {
         let param_name = self.push_literal_node(name.to_owned().into());
         let param_default = self.push_literal_node(default_value);
         let (_, param) = self.push_parameter(param_name, param_default);
@@ -562,7 +670,7 @@ impl Node {
         }
     }
 
-    pub fn evaluate(&self, engine: &Engine, arguments: &HashMap<ParameterId, Value>) -> Value {
+    pub fn evaluate(&self, engine: &Engine, arguments: &HashMap<ParameterId, Value2>) -> Value2 {
         match &self.operation {
             NodeOperation::Literal(value) => value.clone(),
             NodeOperation::Parameter(id) => arguments
@@ -590,13 +698,13 @@ impl Node {
                     let component_value = engine[*component_value].evaluate(engine, arguments);
                     components.push((component_name, component_value));
                 }
-                Value::Struct { name, components }
+                Value2::Struct { name, components }
             }
             NodeOperation::ComposeColor => {
                 let c1 = engine[self.arguments[0]].evaluate(engine, arguments);
                 let c2 = engine[self.arguments[1]].evaluate(engine, arguments);
                 let c3 = engine[self.arguments[2]].evaluate(engine, arguments);
-                Value::Struct {
+                Value2::Struct {
                     name: format!("Color"),
                     components: vec![
                         (format!("Channel 1"), c1),
@@ -607,7 +715,7 @@ impl Node {
             }
             NodeOperation::GetComponent(component_name) => {
                 let input = engine[self.input.unwrap()].evaluate(engine, arguments);
-                if let Value::Struct { components, .. } = input {
+                if let Value2::Struct { components, .. } = input {
                     components
                         .iter()
                         .find(|x| &x.0 == component_name)
@@ -636,32 +744,6 @@ impl Node {
         }
     }
 
-    pub fn compile(
-        &self,
-        engine: &Engine,
-    ) -> (
-        HashMap<ParameterId, MemoryLayout>,
-        BytecodeProgram,
-        MemoryLayout,
-    ) {
-        let mut temporary_heap = Heap::new(0);
-        let mut arg_layout = HashMap::new();
-        let parameters = self.collect_parameters(engine);
-        for param in parameters {
-            let size = param.default.size();
-            let start = temporary_heap.allocate_space_for_multiple_values(size);
-            arg_layout.insert(param.id, param.default.layout(start));
-        }
-        let instructions = vec![];
-        let output_layout =
-            self.compile_impl(engine, &arg_layout, &mut instructions, &mut temporary_heap);
-        (
-            arg_layout,
-            BytecodeProgram::new(instructions),
-            output_layout,
-        )
-    }
-
     fn compile_impl(
         &self,
         engine: &Engine,
@@ -669,7 +751,7 @@ impl Node {
         instructions: &mut Vec<BytecodeInstruction>,
         heap: &mut Heap,
     ) -> MemoryLayout {
-        let output_layout = match self.operation {
+        let output_layout = match &self.operation {
             NodeOperation::Literal(value) => value.add_load_instructions(instructions, heap),
             NodeOperation::Parameter(id) => arg_layout[&id].clone(),
             NodeOperation::Basic(op) => {
@@ -726,14 +808,14 @@ impl Node {
                     heap,
                 );
                 let MemoryLayout::Struct { components } = base else { panic!() };
-                components.iter().find(|x| x.0 == name).unwrap().1.clone()
+                components.iter().find(|x| &x.0 == name).unwrap().1.clone()
             }
             NodeOperation::CustomNode { result, input } => {
-                let mut parameters = engine[result].collect_parameters(engine);
+                let mut parameters = engine[*result].collect_parameters(engine);
                 let mut new_args = HashMap::new();
                 let mut arg_index = 0;
                 for param in parameters {
-                    let value = if Some(param.id) == input {
+                    let value = if Some(param.id) == *input {
                         self.input.unwrap()
                     } else {
                         let value = self.arguments[arg_index];
@@ -743,13 +825,13 @@ impl Node {
                     let value = engine[value].compile_impl(engine, arg_layout, instructions, heap);
                     new_args.insert(param.id, value);
                 }
-                engine[result].compile_impl(engine, &new_args, instructions, heap)
+                engine[*result].compile_impl(engine, &new_args, instructions, heap)
             }
         };
         output_layout
     }
 
-    pub fn as_literal(&self) -> &Value {
+    pub fn as_literal(&self) -> &Value2 {
         if let NodeOperation::Literal(literal) = &self.operation {
             literal
         } else {
@@ -757,7 +839,7 @@ impl Node {
         }
     }
 
-    pub fn as_literal_mut(&mut self) -> &mut Value {
+    pub fn as_literal_mut(&mut self) -> &mut Value2 {
         if let NodeOperation::Literal(literal) = &mut self.operation {
             literal
         } else {
@@ -765,7 +847,7 @@ impl Node {
         }
     }
 
-    pub fn output_type(&self, type_of_other_node: impl FnOnce(NodeId) -> Type) -> Type {
+    pub fn output_type(&self, type_of_other_node: impl FnOnce(NodeId) -> Type2) -> Type2 {
         use NodeOperation::*;
         match &self.operation {
             Literal(lit) => lit.r#type().into(),
@@ -781,7 +863,7 @@ impl Node {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeOperation {
-    Literal(Value),
+    Literal(Value2),
     Parameter(ParameterId),
     Basic(BasicOp),
     ComposeStruct,
@@ -869,15 +951,15 @@ impl BasicOp {
         }
     }
 
-    fn combine(&self, a: &Value, b: &Value) -> Value {
+    fn combine(&self, a: &Value2, b: &Value2) -> Value2 {
         let supertype = a.r#type().max(b.r#type());
         let a = a.cast(supertype).unwrap();
         let b = b.cast(supertype).unwrap();
         match (a, b) {
-            (Value::Boolean(a), Value::Boolean(b)) => self.combine_booleans(a, b).into(),
-            (Value::Integer(a), Value::Integer(b)) => self.combine_integers(a, b).into(),
-            (Value::Float(a), Value::Float(b)) => self.combine_floats(a, b).into(),
-            (Value::String(a), Value::String(b)) => self.combine_strings(a, b).into(),
+            (Value2::Boolean(a), Value2::Boolean(b)) => self.combine_booleans(a, b).into(),
+            (Value2::Integer(a), Value2::Integer(b)) => self.combine_integers(a, b).into(),
+            (Value2::Float(a), Value2::Float(b)) => self.combine_floats(a, b).into(),
+            (Value2::String(a), Value2::String(b)) => self.combine_strings(a, b).into(),
             _ => unreachable!("Values should be the same type."),
         }
     }
@@ -976,8 +1058,8 @@ fn cast_int_to_float(
     let cast = heap.allocate_space_for_single_value();
     instructions.push(BytecodeInstruction::UnaryOp {
         op: UnaryOp::CastIntToFloat,
-        input: a,
-        output: a_cast,
+        input: int,
+        output: cast,
     });
     cast
 }

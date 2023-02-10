@@ -199,6 +199,7 @@ impl BytecodeInstruction {
                     heap.put_integer(output, result);
                 }
             },
+            _ => panic!(),
         }
     }
 }
@@ -225,6 +226,7 @@ impl BytecodeProgram {
                     output,
                     ..
                 } => min_size = min_size.max(input_1).max(input_2).max(output),
+                _ => panic!(),
             }
         }
         min_size
@@ -241,5 +243,7 @@ impl BytecodeProgram {
 pub enum MemoryLayout {
     Integer(usize),
     Float(usize),
-    Struct { components: Vec<(String, MemoryLayout)> },
+    Struct {
+        components: Vec<(String, MemoryLayout)>,
+    },
 }

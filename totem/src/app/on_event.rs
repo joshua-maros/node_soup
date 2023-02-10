@@ -12,7 +12,7 @@ use renderer::{
 
 use super::{App, DragTarget};
 use crate::{
-    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId, Value},
+    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId, Value2},
     widgets::{BoundingBoxKind, EventResponse, Socket, ValueWidget},
 };
 

@@ -16,8 +16,8 @@ use theme::{
 use super::App;
 use crate::{
     engine::{
-        BaseType, Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Type,
-        Value,
+        BaseType, Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Type2,
+        Value2,
     },
     widgets::{BoundingBox, BoundingBoxKind},
 };
@@ -118,6 +118,7 @@ impl App {
             render_texture_output_preview(position, layer, 0)
         } else {
             let value = node.evaluate(&self.computation_engine, &arguments);
+            self.computation_engine.compile(output_of);
             render_simple_output_preview(position, layer, &value)
         }
     }
@@ -342,7 +343,11 @@ fn render_parameter(
     BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
-fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> BoundingBox {
+fn render_simple_output_preview(
+    start: Position,
+    layer: &mut Shapes,
+    value: &Value2,
+) -> BoundingBox {
     let size = PREVIEW_WIDGET_SIZE;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
