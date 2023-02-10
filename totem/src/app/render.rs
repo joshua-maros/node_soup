@@ -65,18 +65,61 @@ impl App {
 
     fn render_preview_drawer(&mut self, layer: &mut Shapes) -> BoundingBox {
         let mut bboxes = Vec::new();
-        let active = &self.computation_engine[self.active_node()];
-        let mut parameters = HashMap::new();
-        for param_desc in active.collect_parameters(&self.computation_engine) {
-            parameters.insert(param_desc.id, param_desc.default.clone());
-        }
-        let value = active.evaluate(&self.computation_engine, &parameters);
-        let bbox = render_output_preview(Position { x: 0.0, y: 0.0 }, layer, &value);
+        let bbox =
+            self.render_output_preview(Position { x: 0.0, y: 0.0 }, layer, self.active_node());
         let y = bbox.end.y + INTER_PANEL_PADDING;
         bboxes.push(bbox);
         let bbox = self.render_toolbox(Position { x: 0.0, y }, layer);
         bboxes.push(bbox);
         BoundingBox::new_from_children(bboxes)
+    }
+
+    fn render_output_preview(
+        &mut self,
+        position: Position,
+        layer: &mut Shapes,
+        output_of: NodeId,
+    ) -> BoundingBox {
+        let node = &self.computation_engine[output_of];
+        let parameters = node.collect_parameters(&self.computation_engine);
+        let mut arguments = HashMap::new();
+        for param_desc in &parameters {
+            arguments.insert(param_desc.id, param_desc.default.clone());
+        }
+        if parameters
+            .iter()
+            .any(|param| param.id == self.builtins.display_position.0)
+        {
+            let mut data = [[0; 4]; 360 * 360];
+            let x_node = self.computation_engine.push_literal_node(0.into());
+            let y_node = self.computation_engine.push_literal_node(0.into());
+            let coordinate_node = self.computation_engine.push_node(Node {
+                operation: NodeOperation::CustomNode {
+                    result: self.builtins.compose_integer_vector_2d,
+                    input: None,
+                },
+                input: None,
+                arguments: vec![x_node, y_node],
+            });
+            for y in 0..360 {
+                *self.computation_engine[y_node].as_literal_mut() = y.into();
+                for x in 0..360 {
+                    *self.computation_engine[x_node].as_literal_mut() = x.into();
+                    let coordinate = self.computation_engine[coordinate_node]
+                        .evaluate(&self.computation_engine, &HashMap::new());
+                    arguments.insert(self.builtins.display_position.0, coordinate);
+                    let value = self.computation_engine[output_of]
+                        .evaluate(&self.computation_engine, &arguments);
+                    let brightness = (value.as_float().unwrap().clamp(0.0, 1.0) * 255.99) as u8;
+                    data[((y * 360) + x) as usize] = [brightness, brightness, brightness, 255];
+                }
+            }
+            self.render_engine.upload_image(0, &data);
+            render_texture_output_preview(position, layer, 0)
+        } else {
+            let value = node.evaluate(&self.computation_engine, &arguments);
+            render_simple_output_preview(position, layer, &value)
+        }
     }
 
     fn render_node_editor(
@@ -299,7 +342,7 @@ fn render_parameter(
     BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
-fn render_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> BoundingBox {
+fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> BoundingBox {
     let size = PREVIEW_WIDGET_SIZE;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -318,10 +361,23 @@ fn render_output_preview(start: Position, layer: &mut Shapes, value: &Value) -> 
         horizontal_align: HorizontalAlign::Center,
         vertical_align: VerticalAlign::Center,
     });
+    let size = Size {
+        width: size,
+        height: size,
+    };
+    BoundingBox::new_start_size(start, size, BoundingBoxKind::Unused)
+}
+
+fn render_texture_output_preview(
+    start: Position,
+    layer: &mut Shapes,
+    image_index: i32,
+) -> BoundingBox {
+    let size = PREVIEW_WIDGET_SIZE;
     layer.push_image(ImageInstance {
-        position: [0.0, 0.0],
+        position: [start.x, start.y],
         size,
-        index: 0,
+        index: image_index,
     });
     let size = Size {
         width: size,

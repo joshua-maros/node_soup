@@ -4,6 +4,7 @@ mod app;
 mod engine;
 mod util;
 mod widgets;
+mod bytecode;
 
 use app::App;
 
