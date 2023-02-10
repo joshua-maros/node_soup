@@ -34,7 +34,7 @@ pub struct App {
     hovering: Option<BoundingBoxKind>,
     dragging: Option<BoundingBoxKind>,
     tool_targets: Vec<(ParameterId, NodeId)>,
-    collapse_to_literal: Option<NodeId>,
+    collapse_to_literal: Option<(NodeId, NodeId)>,
 }
 
 impl App {
@@ -46,7 +46,8 @@ impl App {
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
         render_engine.upload_image(0, &[[255; 4]; 360 * 360]);
-        let (computation_engine, builtins) = Engine::new();
+        let (mut computation_engine, builtins) = Engine::new();
+        computation_engine.compile(computation_engine.root_node());
         let selected_node_path = vec![computation_engine.root_node()];
         App {
             window,

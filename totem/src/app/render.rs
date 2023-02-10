@@ -117,9 +117,8 @@ impl App {
             self.render_engine.upload_image(0, &data);
             render_texture_output_preview(position, layer, 0)
         } else {
-            let value = node.evaluate(&self.computation_engine, &arguments);
-            self.computation_engine.compile(output_of);
-            render_simple_output_preview(position, layer, &value)
+            let value: f32 = self.computation_engine.execute(output_of);
+            render_simple_output_preview(position, layer, &value.into())
         }
     }
 

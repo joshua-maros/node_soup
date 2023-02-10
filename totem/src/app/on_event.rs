@@ -101,9 +101,10 @@ impl App {
                     } else {
                         false
                     };
+                    let old_active = self.active_node();
                     let new_active = self.insert_prototype(target_prototype, self.active_node());
                     if should_collapse {
-                        self.collapse_to_literal = Some(new_active)
+                        self.collapse_to_literal = Some((old_active, new_active));
                     } else {
                         self.collapse_to_literal = None;
                     }
@@ -229,11 +230,13 @@ impl App {
                 self.selected_node_path.push(node);
                 assert_eq!(self.selected_node_path.last(), Some(&node));
             } else if let Some(BoundingBoxKind::InvokeTool(..)) = self.dragging {
-                if let Some(output) = self.collapse_to_literal {
+                if let Some((old_literal, output)) = self.collapse_to_literal {
                     let value = self.computation_engine[output]
                         .evaluate(&self.computation_engine, &hashmap![]);
-                    let literal = self.computation_engine.push_literal_node(value);
-                    self.replace_references(output, literal);
+                    self.computation_engine
+                        .write_constant_data(old_literal, &value);
+                    *self.computation_engine[old_literal].as_literal_mut() = value;
+                    self.replace_references(output, old_literal);
                 }
             }
             self.dragging = None;

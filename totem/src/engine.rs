@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ops::{Index, IndexMut},
     rc::Rc,
 };
@@ -9,7 +9,7 @@ use cranelift::{
     prelude::*,
 };
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{DataContext, FuncId, Linkage, Module};
+use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
 use maplit::hashmap;
 use renderer::{Position, Shapes};
@@ -29,6 +29,33 @@ struct CodeGenerationContext {
     data_c: DataContext,
     module: JITModule,
     functions: HashMap<NodeId, FuncId>,
+    constants: HashMap<NodeId, DataId>,
+    undefined_functions: HashSet<NodeId>,
+}
+
+struct NodeDefinitionContext<'x, 'f> {
+    func_builder: &'x mut FunctionBuilder<'f>,
+    constants: &'x mut HashMap<NodeId, DataId>,
+    data_c: &'x mut DataContext,
+    module: &'x mut JITModule,
+    nodes: &'x HashMap<NodeId, Node>,
+    node: NodeId,
+}
+
+impl<'x, 'f> NodeDefinitionContext<'x, 'f> {
+    pub fn reborrow<'y>(&'y mut self, new_node: NodeId) -> NodeDefinitionContext<'y, 'f>
+    where
+        'x: 'y,
+    {
+        NodeDefinitionContext {
+            func_builder: &mut *self.func_builder,
+            constants: &mut *self.constants,
+            data_c: &mut *self.data_c,
+            module: &mut *self.module,
+            nodes: &*self.nodes,
+            node: new_node,
+        }
+    }
 }
 
 impl CodeGenerationContext {
@@ -41,73 +68,143 @@ impl CodeGenerationContext {
             data_c: DataContext::new(),
             module,
             functions: HashMap::new(),
+            constants: HashMap::new(),
+            undefined_functions: HashSet::new(),
         }
     }
 
-    fn get_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> FuncId {
+    fn get_node_signature(nodes: &HashMap<NodeId, Node>, node: NodeId) -> Signature {
+        Signature {
+            params: vec![],
+            returns: vec![AbiParam::new(types::F32)],
+            call_conv: isa::CallConv::Fast,
+        }
+    }
+
+    fn get_node_declaration(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> FuncId {
         *self.functions.entry(node).or_insert_with(|| {
-            let sig = Signature {
-                params: vec![],
-                returns: vec![AbiParam::new(types::F32)],
-                call_conv: isa::CallConv::Fast,
-            };
-            self.module
+            let sig = Self::get_node_signature(nodes, node);
+            let id = self
+                .module
                 .declare_function("", Linkage::Export, &sig)
-                .unwrap()
+                .unwrap();
+            self.undefined_functions.insert(node);
+            id
         })
     }
 
-    fn compile_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
-        let func_id = self.get_node_implementation(nodes, node);
+    /// Additionally defines the constant if it has not been defined.
+    fn get_constant_declaration(
+        constants: &mut HashMap<NodeId, DataId>,
+        data_c: &mut DataContext,
+        module: &mut JITModule,
+        node: NodeId,
+        data: &Value2,
+    ) -> DataId {
+        *constants.entry(node).or_insert_with(|| {
+            data_c.define(data.as_ne_bytes().into_boxed_slice());
+            let id = module
+                .declare_data(
+                    &format!("Data For {:?}", node),
+                    Linkage::Export,
+                    true,
+                    false,
+                )
+                .unwrap();
+            module.define_data(id, data_c).unwrap();
+            data_c.clear();
+            id
+        })
+    }
+
+    fn write_constant_data(&mut self, node: NodeId, data: &Value2) {
+        let buffer_id = self.constants[&node];
+        let buffer = self.module.get_finalized_data(buffer_id);
+        let slice = unsafe { std::slice::from_raw_parts_mut(buffer.0.cast_mut(), buffer.1) };
+        slice.copy_from_slice(&data.as_ne_bytes());
+    }
+
+    /// Also defines all nodes this node is dependant on.
+    fn define_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
+        self.define_node_implementation_impl(nodes, node);
+        for undefined_node in std::mem::take(&mut self.undefined_functions) {
+            self.define_node_implementation_impl(nodes, undefined_node);
+        }
+        self.module.finalize_definitions().unwrap();
+    }
+
+    fn define_node_implementation_impl(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
+        let func_id = self.get_node_declaration(nodes, node);
+        if !self.undefined_functions.contains(&node) {
+            return;
+        }
+
+        self.codegen_c.func = Function::new();
+        self.codegen_c.func.signature = Self::get_node_signature(nodes, node);
         let mut builder = FunctionBuilder::new(&mut self.codegen_c.func, &mut self.builder_c);
         let root_block = builder.create_block();
         builder.switch_to_block(root_block);
-        let retval = Self::compile_node_to_instructions(&mut builder, nodes, node);
+        let ctx = NodeDefinitionContext {
+            func_builder: &mut builder,
+            constants: &mut self.constants,
+            data_c: &mut self.data_c,
+            module: &mut self.module,
+            nodes,
+            node,
+        };
+        let retval = Self::compile_node_to_instructions(ctx);
         builder.ins().return_(&[retval]);
         builder.seal_block(root_block);
         builder.finalize();
-        self.module.define_function(func_id, &mut self.codegen_c);
+        self.module
+            .define_function(func_id, &mut self.codegen_c)
+            .unwrap();
     }
 
-    fn execute_node_implementation<I, O>(
-        &mut self,
-        nodes: &HashMap<NodeId, Node>,
-        node: NodeId,
-        input: I,
-    ) -> O {
-        self.module.finalize_definitions();
-        let id = self.get_node_implementation(nodes, node);
+    fn execute_node_implementation<O>(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> O {
+        let id = self.get_node_declaration(nodes, node);
         let func = self.module.get_finalized_function(id);
-        let func = unsafe { std::mem::transmute::<_, fn(I) -> O>(func) };
-        func(input)
+        let func = unsafe { std::mem::transmute::<_, fn() -> O>(func) };
+        func()
     }
 
-    fn compile_node_to_instructions(
-        builder: &mut FunctionBuilder,
-        nodes: &HashMap<NodeId, Node>,
-        node: NodeId,
-    ) -> Value {
-        let node = &nodes[&node];
+    fn load_global_data(c: NodeDefinitionContext, ty: Type, id: DataId) -> Value {
+        let local_id = c.module.declare_data_in_func(id, c.func_builder.func);
+        let ptr_type = c.module.target_config().pointer_type();
+        let ptr = c.func_builder.ins().symbol_value(ptr_type, local_id);
+        c.func_builder.ins().load(ty, MemFlags::new(), ptr, 0)
+    }
+
+    fn compile_node_to_instructions(mut c: NodeDefinitionContext) -> Value {
+        let node = &c.nodes[&c.node];
         match &node.operation {
-            NodeOperation::Literal(value) => match value {
-                Value2::Boolean(_) => todo!(),
-                &Value2::Integer(value) => builder.ins().iconst(types::I32, value as i64),
-                &Value2::Float(value) => builder.ins().f32const(value),
-                Value2::String(_) => todo!(),
-                Value2::Struct { name, components } => todo!(),
-                Value2::Invalid => todo!(),
-            },
+            NodeOperation::Literal(value) => {
+                let data =
+                    Self::get_constant_declaration(c.constants, c.data_c, c.module, c.node, value);
+                match value {
+                    Value2::Boolean(_) => todo!(),
+                    Value2::Integer(_) => Self::load_global_data(c, types::I32, data),
+                    Value2::Float(_) => Self::load_global_data(c, types::F32, data),
+                    Value2::String(_) => todo!(),
+                    Value2::Struct { name, components } => todo!(),
+                    Value2::Invalid => todo!(),
+                }
+            }
             NodeOperation::Parameter(_) => todo!(),
             NodeOperation::Basic(op) => {
-                let input = Self::compile_node_to_instructions(builder, nodes, node.input.unwrap());
-                let argument =
-                    Self::compile_node_to_instructions(builder, nodes, node.arguments[0]);
-                match op {
-                    BasicOp::Add => builder.ins().fadd(input, argument),
-                    BasicOp::Subtract => builder.ins().fsub(input, argument),
-                    BasicOp::Multiply => builder.ins().fmul(input, argument),
-                    BasicOp::Divide => builder.ins().fdiv(input, argument),
-                }
+                let input = node.input.unwrap();
+                let argument = node.arguments[0];
+                drop(node);
+                let input = Self::compile_node_to_instructions(c.reborrow(input));
+                let argument = Self::compile_node_to_instructions(c.reborrow(argument));
+                let result = match op {
+                    BasicOp::Add => c.func_builder.ins().fadd(input, argument),
+                    BasicOp::Subtract => c.func_builder.ins().fsub(input, argument),
+                    BasicOp::Multiply => c.func_builder.ins().fmul(input, argument),
+                    BasicOp::Divide => c.func_builder.ins().fdiv(input, argument),
+                };
+                drop(c);
+                result
             }
             NodeOperation::ComposeStruct => todo!(),
             NodeOperation::ComposeColor => todo!(),
@@ -228,6 +325,17 @@ impl Value2 {
                         .add_load_instructions_impl(instructions, layout);
                 }
             }
+        }
+    }
+
+    fn as_ne_bytes(&self) -> Vec<u8> {
+        match self {
+            Value2::Boolean(_) => todo!(),
+            Value2::Integer(value) => value.to_ne_bytes().into(),
+            Value2::Float(value) => value.to_ne_bytes().into(),
+            Value2::String(_) => todo!(),
+            Value2::Struct { name, components } => todo!(),
+            Value2::Invalid => todo!(),
         }
     }
 }
@@ -514,7 +622,15 @@ impl Engine {
     }
 
     pub fn compile(&mut self, node: NodeId) {
-        self.context.compile_node_implementation(&self.nodes, node);
+        self.context.define_node_implementation(&self.nodes, node);
+    }
+
+    pub fn write_constant_data(&mut self, node: NodeId, data: &Value2) {
+        self.context.write_constant_data(node, data);
+    }
+
+    pub fn execute<O>(&mut self, node: NodeId) -> O {
+        self.context.execute_node_implementation(&self.nodes, node)
     }
 
     fn add_tool(&mut self, tool: Tool) -> ToolId {
