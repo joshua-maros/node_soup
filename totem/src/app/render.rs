@@ -8,7 +8,7 @@ use renderer::{
 };
 use theme::{
     column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_FILL, NODE_GUTTER_WIDTH,
-    NODE_HEIGHT, NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_PADDING, NODE_OUTLINE,
+    NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_HEIGHT, NODE_LABEL_PADDING, NODE_OUTLINE,
     NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE,
     TOOL_ICON_SIZE,
 };
@@ -138,11 +138,7 @@ impl App {
                     let params = node.collect_parameters(&self.computation_engine);
                     for (index, arg) in node.arguments.iter().enumerate().rev() {
                         next_column_nodes.push((
-                            format!(
-                                "{}/{}",
-                                node.operation.name(),
-                                node.operation.param_name(index, &params)
-                            ),
+                            format!("{}", node.operation.param_name(index, &params)),
                             *arg,
                         ));
                     }
@@ -157,7 +153,7 @@ impl App {
             let [fill_color, outline_color] = column_colors()[index];
             layer.push_rect(RectInstance {
                 position: [x, y],
-                size: [NODE_WIDTH, NODE_HEIGHT],
+                size: [NODE_WIDTH, NODE_LABEL_HEIGHT],
                 fill_color,
                 outline_color,
                 outline_modes: TOP_OUTLINE_FLAT
@@ -167,12 +163,12 @@ impl App {
             });
             layer.push_text(Text {
                 sections: vec![Section::node_label(name)],
-                center: [x + NODE_WIDTH / 2.0, y + NODE_HEIGHT / 2.0],
-                bounds: [NODE_WIDTH, NODE_HEIGHT],
-                horizontal_align: HorizontalAlign::Center,
+                center: [x + NODE_LABEL_PADDING, y + NODE_LABEL_HEIGHT / 2.0],
+                bounds: [NODE_WIDTH, NODE_LABEL_HEIGHT],
+                horizontal_align: HorizontalAlign::Left,
                 vertical_align: VerticalAlign::Center,
             });
-            y += NODE_HEIGHT + INTER_PANEL_PADDING;
+            y += NODE_LABEL_HEIGHT + INTER_PANEL_PADDING;
             bboxes.push(node_bbox);
         }
         next_column_nodes.reverse();
@@ -190,8 +186,8 @@ impl App {
         let Position { x, y } = start;
         let mut label = Text {
             sections: vec![Section::node_label(node.operation.name())],
-            center: [x + NODE_LABEL_PADDING, y + NODE_HEIGHT / 2.0],
-            bounds: [NODE_WIDTH, NODE_HEIGHT],
+            center: [x + NODE_LABEL_PADDING, y + NODE_LABEL_HEIGHT / 2.0],
+            bounds: [NODE_WIDTH, NODE_LABEL_HEIGHT],
             horizontal_align: HorizontalAlign::Left,
             vertical_align: VerticalAlign::Center,
         };
@@ -223,20 +219,37 @@ impl App {
                 bboxes.push(param_bbox);
             }
         }
-        let selected = self.selected_node_path.last() == Some(&node_id);
+        let height = if self.selected_node_path.last() == Some(&node_id) {
+            NODE_LABEL_HEIGHT + NODE_ICON_SIZE + 2.0 * NODE_ICON_PADDING - NODE_LABEL_PADDING - 2.0
+        } else {
+            NODE_LABEL_HEIGHT
+        };
         layer.push_rect(RectInstance {
             position: [x, y],
-            size: [NODE_GUTTER_WIDTH, NODE_HEIGHT],
+            size: [NODE_GUTTER_WIDTH, height],
             fill_color,
             outline_color,
             outline_modes: LEFT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
         });
         layer.push_rect(RectInstance {
             position: [x + NODE_GUTTER_WIDTH, y],
-            size: [NODE_WIDTH - NODE_GUTTER_WIDTH, NODE_HEIGHT],
+            size: [NODE_WIDTH - NODE_GUTTER_WIDTH, height],
             fill_color,
             outline_color,
             outline_modes: RIGHT_OUTLINE_FLAT | TOP_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
+        });
+        label.center[1] = y + NODE_LABEL_HEIGHT / 2.0;
+        let end = Position {
+            x: x + NODE_WIDTH,
+            y: y + height,
+        };
+        let icon_d = NODE_ICON_PADDING + NODE_ICON_SIZE;
+        layer.push_rect(RectInstance {
+            position: [start.x, end.y],
+            size: [INTER_NODE_PADDING * 2.0, INTER_NODE_PADDING],
+            fill_color,
+            outline_color,
+            outline_modes: LEFT_OUTLINE_DIAGONAL | RIGHT_OUTLINE_ANTIDIAGONAL,
         });
         if self.selected_node_path.contains(&node_id) {
             layer.push_rect(RectInstance {
@@ -247,24 +260,28 @@ impl App {
                 outline_modes: LEFT_OUTLINE_FLAT | RIGHT_OUTLINE_FLAT | BOTTOM_OUTLINE_FLAT,
             });
         }
-        label.center[1] = y + NODE_HEIGHT / 2.0;
-        let end = Position {
-            x: x + NODE_WIDTH,
-            y: y + NODE_HEIGHT,
-        };
-        let d = NODE_ICON_PADDING + NODE_ICON_SIZE;
-        layer.push_icon(IconInstance {
-            position: [end.x - d, end.y - d],
-            size: NODE_ICON_SIZE,
-            index: if selected { 1 } else { 0 },
-        });
-        layer.push_rect(RectInstance {
-            position: [start.x, end.y],
-            size: [INTER_NODE_PADDING * 2.0, INTER_NODE_PADDING],
-            fill_color,
-            outline_color,
-            outline_modes: LEFT_OUTLINE_DIAGONAL | RIGHT_OUTLINE_ANTIDIAGONAL,
-        });
+        if self.selected_node_path.last() == Some(&node_id) {
+            layer.push_icon(IconInstance {
+                position: [start.x + NODE_ICON_PADDING, end.y - icon_d],
+                size: NODE_ICON_SIZE,
+                index: 1,
+            });
+            layer.push_icon(IconInstance {
+                position: [end.x - icon_d, end.y - icon_d],
+                size: NODE_ICON_SIZE,
+                index: 1,
+            });
+            layer.push_icon(IconInstance {
+                position: [end.x - 2.0 * icon_d, end.y - icon_d],
+                size: NODE_ICON_SIZE,
+                index: 1,
+            });
+            layer.push_icon(IconInstance {
+                position: [end.x - 3.0 * icon_d, end.y - icon_d],
+                size: NODE_ICON_SIZE,
+                index: 1,
+            });
+        }
         let kind = self.default_node_bbox_kind(node_id, &node.operation, containing_editor_index);
         bboxes.push(BoundingBox::new_start_end(Position { x, y }, end, kind));
         layer.push_text(label);
@@ -318,7 +335,7 @@ fn render_parameter(
     [fill_color, outline_color]: [[f32; 3]; 2],
 ) -> BoundingBox {
     let width = NODE_WIDTH - NODE_PARAMETER_PADDING - NODE_GUTTER_WIDTH;
-    let height = NODE_HEIGHT;
+    let height = NODE_LABEL_HEIGHT;
     let kind = BoundingBoxKind::Unused;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -332,9 +349,12 @@ fn render_parameter(
     });
     layer.push_text(Text {
         sections: vec![Section::node_label(name.to_owned())],
-        center: [start.x + NODE_LABEL_PADDING, start.y + height / 2.0],
+        center: [
+            start.x + NODE_WIDTH - NODE_LABEL_PADDING - NODE_GUTTER_WIDTH - NODE_PARAMETER_PADDING,
+            start.y + height / 2.0,
+        ],
         bounds: [width - 2.0 * NODE_LABEL_PADDING, height],
-        horizontal_align: HorizontalAlign::Left,
+        horizontal_align: HorizontalAlign::Right,
         vertical_align: VerticalAlign::Center,
     });
     BoundingBox::new_start_size(start, Size { width, height }, kind)

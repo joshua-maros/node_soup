@@ -1,5 +1,5 @@
 use renderer::{Position, Shapes, Size};
-use theme::{NODE_HEIGHT, NODE_WIDTH};
+use theme::{NODE_LABEL_HEIGHT, NODE_WIDTH};
 
 use crate::engine::{NodeId, ToolId, Value2};
 
@@ -82,7 +82,7 @@ impl ValueWidget for SimpleValueWidget {
     fn size(&self) -> Size {
         Size {
             width: NODE_WIDTH,
-            height: NODE_HEIGHT,
+            height: NODE_LABEL_HEIGHT,
         }
     }
 
