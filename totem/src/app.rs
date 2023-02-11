@@ -46,7 +46,7 @@ impl App {
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
         render_engine.upload_image(0, &[[255; 4]; 360 * 360]);
-        let (mut computation_engine, builtins) = Engine::new();
+        let (computation_engine, builtins) = Engine::new();
         let selected_node_path = vec![computation_engine.root_node()];
         App {
             window,

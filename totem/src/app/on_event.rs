@@ -89,6 +89,7 @@ impl App {
             if let &Some(BoundingBoxKind::InvokeTool(tool_id)) = &self.dragging {
                 let tool = &self.computation_engine.get_tool(tool_id);
                 let target_prototype = tool.target_prototype;
+                self.collapse_to_literal = None;
                 if let Ok(targets) =
                     self.match_prototype_to_node(target_prototype, self.active_node())
                 {
@@ -105,8 +106,6 @@ impl App {
                     let new_active = self.insert_prototype(target_prototype, self.active_node());
                     if should_collapse {
                         self.collapse_to_literal = Some((old_active, new_active));
-                    } else {
-                        self.collapse_to_literal = None;
                     }
                     *self.selected_node_path.last_mut().unwrap() = new_active;
                     self.tool_targets = self
