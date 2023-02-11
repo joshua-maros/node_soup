@@ -1,6 +1,8 @@
 mod on_event;
 mod render;
 
+use std::time::Duration;
+
 use renderer::{
     winit::{ControlFlow, EventLoop, PhysicalSize, Window, WindowBuilder},
     Position, RenderEngine,
@@ -10,6 +12,42 @@ use crate::{
     engine::{BuiltinDefinitions, Engine, NodeId, ParameterId},
     widgets::{BoundingBox, BoundingBoxKind},
 };
+
+pub struct PerfCounters {
+    pub execution_time_acc: Duration,
+    pub upload_time_acc: Duration,
+    pub render_time_acc: Duration,
+    pub samples: u32,
+}
+
+impl PerfCounters {
+    pub fn new() -> Self {
+        Self {
+            execution_time_acc: Duration::ZERO,
+            upload_time_acc: Duration::ZERO,
+            render_time_acc: Duration::ZERO,
+            samples: 0,
+        }
+    }
+
+    pub fn report_and_reset_if_appropriate(&mut self) {
+        if self.execution_time_acc + self.upload_time_acc + self.render_time_acc
+            > Duration::new(1, 0)
+        {
+            let e = self.execution_time_acc.as_millis() as f32 / self.samples as f32;
+            let u = self.upload_time_acc.as_millis() as f32 / self.samples as f32;
+            let r = self.render_time_acc.as_millis() as f32 / self.samples as f32;
+            println!(
+                "({} samples) execution: {:.02}ms, upload: {:.02}ms, render: {:.02}ms",
+                self.samples, e, u, r
+            );
+            self.samples = 0;
+            self.execution_time_acc = Duration::ZERO;
+            self.upload_time_acc = Duration::ZERO;
+            self.render_time_acc = Duration::ZERO;
+        }
+    }
+}
 
 pub struct App {
     window: Window,
@@ -24,6 +62,7 @@ pub struct App {
     dragging: Option<BoundingBoxKind>,
     tool_targets: Vec<(ParameterId, NodeId)>,
     collapse_to_literal: Option<(NodeId, NodeId)>,
+    perf_counters: PerfCounters,
 }
 
 impl App {
@@ -55,6 +94,7 @@ impl App {
             dragging: None,
             tool_targets: vec![],
             collapse_to_literal: None,
+            perf_counters: PerfCounters::new(),
         }
         .run(event_loop)
     }

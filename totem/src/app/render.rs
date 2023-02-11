@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use renderer::{
     winit::ControlFlow, HorizontalAlign, IconInstance, ImageInstance, Position, RectInstance,
@@ -45,7 +45,9 @@ impl App {
         self.root_bbox = BoundingBox::new_from_children(bboxes);
 
         let layers = [&base_layer];
+        let start = Instant::now();
         let result = self.render_engine.render(&layers);
+        self.perf_counters.render_time_acc += start.elapsed();
         match result {
             Ok(()) => (),
             Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
@@ -54,6 +56,8 @@ impl App {
             Err(SurfaceError::OutOfMemory) => self.control_flow = ControlFlow::ExitWithCode(1),
             Err(e) => eprintln!("{:#?}", e),
         }
+        self.perf_counters.samples += 1;
+        self.perf_counters.report_and_reset_if_appropriate();
     }
 
     pub fn active_node(&self) -> NodeId {
@@ -90,6 +94,7 @@ impl App {
         {
             let mut data = [[0; 4]; 360 * 360];
             let mut input_output = [0u8; 12];
+            let start = Instant::now();
             for y in 0..360 {
                 input_output[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
                 for x in 0..360 {
@@ -103,11 +108,18 @@ impl App {
                     data[((y * 360) + x) as usize] = [brightness, brightness, brightness, 255];
                 }
             }
+            self.perf_counters.execution_time_acc += start.elapsed();
+
+            let start = Instant::now();
             self.render_engine.upload_image(0, &data);
+            self.perf_counters.upload_time_acc += start.elapsed();
+
             render_texture_output_preview(position, layer, 0)
         } else {
             let mut io = [0u8; 4];
+            let start = Instant::now();
             unsafe { self.computation_engine.execute(output_of, &mut io) };
+            self.perf_counters.execution_time_acc += start.elapsed();
             let value: f32 = f32::from_ne_bytes(io);
             render_simple_output_preview(position, layer, &value.into())
         }
