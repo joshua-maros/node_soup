@@ -3,22 +3,19 @@ use std::collections::HashMap;
 use renderer::{
     winit::ControlFlow, HorizontalAlign, IconInstance, ImageInstance, Position, RectInstance,
     Section, Shapes, Size, SurfaceError, Text, VerticalAlign, BOTTOM_OUTLINE_FLAT,
-    LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
-    RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
+    LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT, RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_FLAT,
+    TOP_OUTLINE_FLAT,
 };
 use theme::{
-    column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_CORNER_SIZE, NODE_FILL,
-    NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_PADDING,
-    NODE_OUTLINE, NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING,
-    TOOL_BUTTON_SIZE, TOOL_ICON_SIZE,
+    column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_FILL, NODE_GUTTER_WIDTH,
+    NODE_HEIGHT, NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_PADDING, NODE_OUTLINE,
+    NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE,
+    TOOL_ICON_SIZE,
 };
 
 use super::App;
 use crate::{
-    engine::{
-        BaseType, Node, NodeId, NodeOperation, Parameter, ParameterDescription, ParameterId, Type2,
-        Value2,
-    },
+    engine::{Node, NodeId, NodeOperation, Value2},
     widgets::{BoundingBox, BoundingBoxKind},
 };
 

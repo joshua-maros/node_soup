@@ -1,14 +1,7 @@
-use renderer::{
-    HorizontalAlign, Position, RectInstance, Section, Shapes, Size, Text, VerticalAlign,
-    BOTTOM_OUTLINE_FLAT, LEFT_OUTLINE_ANTIDIAGONAL, LEFT_OUTLINE_DIAGONAL, LEFT_OUTLINE_FLAT,
-    RIGHT_OUTLINE_ANTIDIAGONAL, RIGHT_OUTLINE_DIAGONAL, RIGHT_OUTLINE_FLAT, TOP_OUTLINE_FLAT,
-};
-use theme::{
-    NODE_CORNER_SIZE, NODE_FILL, NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_OUTLINE,
-    NODE_PARAMETER_PADDING, NODE_WIDTH,
-};
+use renderer::{Position, Shapes, Size};
+use theme::{NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_PARAMETER_PADDING, NODE_WIDTH};
 
-use crate::engine::{NodeId, ParameterId, ToolId, Value2};
+use crate::engine::{NodeId, ToolId, Value2};
 
 #[derive(Clone, Debug)]
 pub enum BoundingBoxKind {
@@ -99,7 +92,7 @@ impl Node {
         }
     }
 
-    pub fn draw(&self, start: Position, containing_socket_name: &str, layer: &mut Shapes) {}
+    pub fn draw(&self, _start: Position, _containing_socket_name: &str, _layer: &mut Shapes) {}
 }
 
 pub struct SimpleValueWidget {
@@ -124,10 +117,10 @@ impl Default for EventResponse {
 pub trait ValueWidget {
     fn size(&self) -> Size;
     fn draw(&self, start: Position, layer: &mut Shapes);
-    fn on_click(&mut self, er: &mut EventResponse) {}
-    fn on_drag_start(&mut self, er: &mut EventResponse) {}
-    fn on_drag(&mut self, er: &mut EventResponse, offset: (f32, f32)) {}
-    fn on_drag_end(&mut self, er: &mut EventResponse) {}
+    fn on_click(&mut self, _er: &mut EventResponse) {}
+    fn on_drag_start(&mut self, _er: &mut EventResponse) {}
+    fn on_drag(&mut self, _er: &mut EventResponse, _offset: (f32, f32)) {}
+    fn on_drag_end(&mut self, _er: &mut EventResponse) {}
 }
 
 impl ValueWidget for SimpleValueWidget {
@@ -138,7 +131,7 @@ impl ValueWidget for SimpleValueWidget {
         }
     }
 
-    fn draw(&self, start: Position, layer: &mut Shapes) {}
+    fn draw(&self, _start: Position, _layer: &mut Shapes) {}
 
-    fn on_drag(&mut self, er: &mut EventResponse, offset: (f32, f32)) {}
+    fn on_drag(&mut self, _er: &mut EventResponse, _offset: (f32, f32)) {}
 }

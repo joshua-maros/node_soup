@@ -1,20 +1,14 @@
 mod on_event;
 mod render;
 
-use std::collections::{HashMap, HashSet};
-
-use maplit::hashset;
 use renderer::{
-    winit::{
-        ControlFlow, ElementState, Event, EventLoop, KeyboardInput, MouseButton, PhysicalPosition,
-        PhysicalSize, VirtualKeyCode, Window, WindowBuilder, WindowEvent,
-    },
+    winit::{ControlFlow, EventLoop, PhysicalSize, Window, WindowBuilder},
     Position, RenderEngine,
 };
 
 use crate::{
     engine::{BuiltinDefinitions, Engine, NodeId, ParameterId},
-    widgets::{BoundingBox, BoundingBoxKind, ValueWidget},
+    widgets::{BoundingBox, BoundingBoxKind},
 };
 
 #[derive(Clone, Debug)]

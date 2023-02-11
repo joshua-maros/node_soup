@@ -1,7 +1,5 @@
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    Buffer, BufferUsages, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture, TextureView,
+    CommandEncoder, CommandEncoderDescriptor, SurfaceError, SurfaceTexture, TextureView,
     TextureViewDescriptor,
 };
 
@@ -10,7 +8,7 @@ use super::{
     render_rects::render_rects, render_text::render_text, ActiveRenderInfo, MutableResources,
     ReadOnlyResources, RenderEngine,
 };
-use crate::renderer::{fonts::Fonts, shapes::Shapes, vertex_data::RECT_VERTS_LEN};
+use crate::renderer::shapes::Shapes;
 
 impl RenderEngine {
     pub fn render(&mut self, layers: &[&Shapes]) -> Result<(), SurfaceError> {

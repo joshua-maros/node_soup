@@ -9,8 +9,8 @@ mod render_text;
 use std::num::NonZeroU32;
 
 use wgpu::{
-    util::StagingBelt, BindGroup, Buffer, CommandEncoder, ImageDataLayout, RenderPipeline, Texture,
-    TextureView, ImageCopyTexture, Origin3d, TextureAspect,
+    util::StagingBelt, BindGroup, Buffer, CommandEncoder, ImageCopyTexture, ImageDataLayout,
+    Origin3d, RenderPipeline, Texture, TextureAspect, TextureView,
 };
 
 use super::{fonts::Fonts, render_device::RenderDevice, render_target::RenderTarget, Shapes};

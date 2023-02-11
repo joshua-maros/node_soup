@@ -1,4 +1,3 @@
-use ab_glyph::Font;
 use wgpu_glyph::{ab_glyph::FontArc, GlyphBrush, GlyphBrushBuilder};
 
 use super::{render_device::RenderDevice, render_target::RenderTarget};

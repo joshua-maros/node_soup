@@ -1,14 +1,11 @@
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
-    Buffer, BufferUsages, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture, TextureView,
-    TextureViewDescriptor,
+    Buffer, BufferUsages, LoadOp, Operations, RenderPass, RenderPassColorAttachment,
+    RenderPassDescriptor,
 };
 
 use super::{ActiveRenderInfo, ReadOnlyResources};
-use crate::{
-    renderer::{shapes::Shapes, vertex_data::RECT_VERTS_LEN},
-};
+use crate::renderer::vertex_data::RECT_VERTS_LEN;
 
 pub(super) fn render_rects(ror: &ReadOnlyResources, info: &mut ActiveRenderInfo) {
     let (instance_buffer, len) = upload_rects(ror, info);

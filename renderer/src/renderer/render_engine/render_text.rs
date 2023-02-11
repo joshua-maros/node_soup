@@ -1,16 +1,4 @@
-use itertools::Itertools;
-use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt, StagingBelt},
-    Buffer, BufferUsages, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture, TextureView,
-    TextureViewDescriptor,
-};
-use wgpu_glyph::{Extra, FontId, HorizontalAlign, Layout, VerticalAlign};
-
 use super::{ActiveRenderInfo, MutableResources, ReadOnlyResources};
-use crate::{
-    renderer::{fonts::Fonts, shapes::Shapes, Text},
-};
 
 pub(super) fn render_text(
     ror: &ReadOnlyResources,

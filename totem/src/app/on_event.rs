@@ -1,19 +1,17 @@
-use std::ops::Bound;
-
 use itertools::Itertools;
 use maplit::hashmap;
 use renderer::{
     winit::{
-        ControlFlow, ElementState, Event, EventLoop, KeyboardInput, MouseButton, PhysicalPosition,
-        PhysicalSize, VirtualKeyCode, Window, WindowBuilder, WindowEvent,
+        ControlFlow, ElementState, Event, KeyboardInput, MouseButton, PhysicalPosition,
+        VirtualKeyCode, WindowEvent,
     },
     Position,
 };
 
-use super::{App, DragTarget};
+use super::App;
 use crate::{
-    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId, Value2},
-    widgets::{BoundingBoxKind, EventResponse, Socket, ValueWidget},
+    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId},
+    widgets::BoundingBoxKind,
 };
 
 impl App {
@@ -293,7 +291,8 @@ impl App {
                 self.builtins.mouse_offset.0 => encoded_delta,
             ],
         );
-        self.computation_engine.write_constant_data(target_id, &new_data);
+        self.computation_engine
+            .write_constant_data(target_id, &new_data);
         let target = &mut self.computation_engine[target_id];
         *target.as_literal_mut() = new_data;
     }

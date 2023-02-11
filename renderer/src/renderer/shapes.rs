@@ -1,6 +1,4 @@
-use wgpu_glyph::Section;
-
-use super::{IconInstance, Position, RectInstance, Size, Text, image_data::ImageInstance};
+use super::{image_data::ImageInstance, IconInstance, RectInstance, Text};
 
 #[derive(Clone, Debug)]
 pub struct Shapes {

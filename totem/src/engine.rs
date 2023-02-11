@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     ops::{Index, IndexMut},
-    rc::Rc,
 };
 
 use cranelift::{
@@ -12,15 +11,10 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
 use maplit::{hashmap, hashset};
-use renderer::{Position, Shapes};
 
 use crate::{
-    bytecode::{
-        BinaryOp, BytecodeInstruction, BytecodeProgram, FloatOp, Heap, IntegerOp, MemoryLayout,
-        UnaryOp, Usage,
-    },
+    bytecode::{BinaryOp, BytecodeInstruction, FloatOp, Heap, IntegerOp, MemoryLayout, UnaryOp},
     util::{self, Id, IdCreator},
-    widgets::{self, SimpleValueWidget},
 };
 
 struct CodeGenerationContext {
@@ -77,7 +71,7 @@ impl CodeGenerationContext {
         }
     }
 
-    fn get_node_signature(nodes: &HashMap<NodeId, Node>, node: NodeId) -> Signature {
+    fn get_node_signature(_nodes: &HashMap<NodeId, Node>, _node: NodeId) -> Signature {
         Signature {
             params: vec![],
             returns: vec![AbiParam::new(types::F32)],
@@ -206,7 +200,10 @@ impl CodeGenerationContext {
                     Value2::Integer(_) => Self::load_global_data(c, types::I32, data),
                     Value2::Float(_) => Self::load_global_data(c, types::F32, data),
                     Value2::String(_) => todo!(),
-                    Value2::Struct { name, components } => todo!(),
+                    Value2::Struct {
+                        name: _,
+                        components: _,
+                    } => todo!(),
                     Value2::Invalid => todo!(),
                 }
             }
@@ -229,7 +226,10 @@ impl CodeGenerationContext {
             NodeOperation::ComposeStruct => todo!(),
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(_) => todo!(),
-            NodeOperation::CustomNode { result, input } => todo!(),
+            NodeOperation::CustomNode {
+                result: _,
+                input: _,
+            } => todo!(),
         }
     }
 }
@@ -354,7 +354,10 @@ impl Value2 {
             Value2::Integer(value) => value.to_ne_bytes().into(),
             Value2::Float(value) => value.to_ne_bytes().into(),
             Value2::String(_) => todo!(),
-            Value2::Struct { name, components } => todo!(),
+            Value2::Struct {
+                name: _,
+                components: _,
+            } => todo!(),
             Value2::Invalid => todo!(),
         }
     }
@@ -541,7 +544,7 @@ impl Engine {
         };
         let mut node_ids = IdCreator::new();
         let root_node = node_ids.next();
-        let mut parameter_ids = IdCreator::new();
+        let parameter_ids = IdCreator::new();
         let tool_ids = IdCreator::new();
         let context = CodeGenerationContext::new();
         let mut this = Self {
@@ -560,11 +563,11 @@ impl Engine {
     }
 
     fn make_builtins(&mut self) -> BuiltinDefinitions {
-        let default_struct = Value2::Struct {
+        let _default_struct = Value2::Struct {
             name: "Empty Struct".to_owned(),
             components: vec![],
         };
-        let (compose_integer_vector_2d, integer_vector_2d_parameters) = self
+        let (compose_integer_vector_2d, _integer_vector_2d_parameters) = self
             .push_simple_struct_composer(
                 "Compose Integer Vector/2D",
                 vec![("X", 0.into()), ("Y", 0.into())],
@@ -665,7 +668,7 @@ impl Engine {
         &self.tools[&tool]
     }
 
-    fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
+    fn setup_demo(&mut self, _builtins: &BuiltinDefinitions) {
         let value = self.root_node();
         let param1 = self.push_literal_node(2.0.into());
         let value = self.push_node(Node {
@@ -967,7 +970,7 @@ impl Node {
                 components.iter().find(|x| &x.0 == name).unwrap().1.clone()
             }
             NodeOperation::CustomNode { result, input } => {
-                let mut parameters = engine[*result].collect_parameters(engine);
+                let parameters = engine[*result].collect_parameters(engine);
                 let mut new_args = HashMap::new();
                 let mut arg_index = 0;
                 for param in parameters {

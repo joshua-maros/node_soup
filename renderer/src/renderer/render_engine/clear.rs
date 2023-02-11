@@ -1,13 +1,9 @@
 use theme::BG;
 use wgpu::{
-    util::{BufferInitDescriptor, DeviceExt},
-    Buffer, BufferUsages, Color, CommandEncoder, CommandEncoderDescriptor, LoadOp, Operations,
-    RenderPass, RenderPassColorAttachment, RenderPassDescriptor, SurfaceError, SurfaceTexture,
-    TextureView, TextureViewDescriptor,
+    Color, LoadOp, Operations, RenderPass, RenderPassColorAttachment, RenderPassDescriptor,
 };
 
 use super::{ActiveRenderInfo, ReadOnlyResources};
-use crate::renderer::{shapes::Shapes, vertex_data::RECT_VERTS_LEN};
 
 const BG_WGPU: Color = Color {
     r: BG[0] as f64,
@@ -16,7 +12,7 @@ const BG_WGPU: Color = Color {
     a: BG[3] as f64,
 };
 
-pub(super) fn clear(ror: &ReadOnlyResources, info: &mut ActiveRenderInfo) {
+pub(super) fn clear(_ror: &ReadOnlyResources, info: &mut ActiveRenderInfo) {
     let render_pass = start_render_pass(info);
     drop(render_pass);
 }
