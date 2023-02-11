@@ -13,7 +13,6 @@ use itertools::Itertools;
 use maplit::{hashmap, hashset};
 
 use crate::{
-    bytecode::{BinaryOp, BytecodeInstruction, FloatOp, Heap, IntegerOp, MemoryLayout, UnaryOp},
     util::{self, Id, IdCreator},
 };
 
@@ -276,78 +275,6 @@ impl Value2 {
         }
     }
 
-    fn size(&self) -> usize {
-        match self {
-            Value2::Boolean(..) => todo!(),
-            Value2::Integer(..) => 1,
-            Value2::Float(..) => 1,
-            Value2::String(_) => todo!(),
-            Value2::Struct { components, .. } => components.iter().map(|c| c.1.size()).sum(),
-            Value2::Invalid => todo!(),
-        }
-    }
-
-    fn layout(&self, start: usize) -> MemoryLayout {
-        match self {
-            Value2::Boolean(..) => todo!(),
-            Value2::Integer(..) => MemoryLayout::Integer(start),
-            Value2::Float(..) => MemoryLayout::Float(start),
-            Value2::String(_) => todo!(),
-            Value2::Struct { components, .. } => {
-                let mut layout_components = Vec::new();
-                let mut start = start;
-                for (name, value) in components {
-                    let layout = value.layout(start);
-                    start += value.size();
-                    layout_components.push((name.clone(), layout));
-                }
-                MemoryLayout::Struct {
-                    components: layout_components,
-                }
-            }
-            Value2::Invalid => todo!(),
-        }
-    }
-
-    fn add_load_instructions(
-        &self,
-        instructions: &mut Vec<BytecodeInstruction>,
-        heap: &mut Heap,
-    ) -> MemoryLayout {
-        let start = heap.allocate_space_for_multiple_values(self.size());
-        let layout = self.layout(start);
-        self.add_load_instructions_impl(instructions, &layout);
-        layout
-    }
-
-    fn add_load_instructions_impl(
-        &self,
-        instructions: &mut Vec<BytecodeInstruction>,
-        layout: &MemoryLayout,
-    ) {
-        match layout {
-            &MemoryLayout::Integer(position) => {
-                let &Self::Integer(value) = self else { panic!() };
-                instructions.push(BytecodeInstruction::IntegerLiteral(value, position))
-            }
-            &MemoryLayout::Float(position) => {
-                let &Self::Float(value) = self else { panic!() };
-                instructions.push(BytecodeInstruction::FloatLiteral(value, position))
-            }
-            MemoryLayout::Struct {
-                components: layout_components,
-            } => {
-                let Self::Struct { components: value_components, .. } = self else{ panic!()};
-                for (index, (name, layout)) in layout_components.iter().enumerate() {
-                    assert_eq!(name, &value_components[index].0);
-                    value_components[index]
-                        .1
-                        .add_load_instructions_impl(instructions, layout);
-                }
-            }
-        }
-    }
-
     fn as_ne_bytes(&self) -> Vec<u8> {
         match self {
             Value2::Boolean(_) => todo!(),
@@ -453,16 +380,6 @@ pub enum BaseType {
 }
 
 impl BaseType {
-    pub fn name(self) -> &'static str {
-        use BaseType::*;
-        match self {
-            Boolean => "Boolean",
-            Integer => "Integer",
-            Float => "Float",
-            String => "String",
-        }
-    }
-
     fn rank(self) -> i32 {
         match self {
             BaseType::Boolean => 0,
@@ -903,93 +820,6 @@ impl Node {
         }
     }
 
-    fn compile_impl(
-        &self,
-        engine: &Engine,
-        arg_layout: &HashMap<Id<Parameter>, MemoryLayout>,
-        instructions: &mut Vec<BytecodeInstruction>,
-        heap: &mut Heap,
-    ) -> MemoryLayout {
-        let output_layout = match &self.operation {
-            NodeOperation::Literal(value) => value.add_load_instructions(instructions, heap),
-            NodeOperation::Parameter(id) => arg_layout[&id].clone(),
-            NodeOperation::Basic(op) => {
-                let input = engine[self.input.unwrap()].compile_impl(
-                    engine,
-                    arg_layout,
-                    instructions,
-                    heap,
-                );
-                let argument =
-                    engine[self.arguments[0]].compile_impl(engine, arg_layout, instructions, heap);
-                match (input, argument) {
-                    (MemoryLayout::Integer(a), MemoryLayout::Integer(b)) => {
-                        op.compile_int(a, b, instructions, heap)
-                    }
-                    (MemoryLayout::Integer(a), MemoryLayout::Float(b)) => {
-                        let a_cast = cast_int_to_float(a, instructions, heap);
-                        op.compile_float(a_cast, b, instructions, heap)
-                    }
-                    (MemoryLayout::Float(a), MemoryLayout::Integer(b)) => {
-                        let b_cast = cast_int_to_float(b, instructions, heap);
-                        op.compile_float(a, b_cast, instructions, heap)
-                    }
-                    (MemoryLayout::Float(a), MemoryLayout::Float(b)) => {
-                        op.compile_float(a, b, instructions, heap)
-                    }
-                    _ => unreachable!("Unsupported operation"),
-                }
-            }
-            NodeOperation::ComposeStruct => {
-                let mut components = Vec::new();
-                for (&component_name, &component_value) in (&self.arguments[1..]).iter().tuples() {
-                    let component_name = engine[component_name]
-                        .evaluate(engine, &HashMap::new())
-                        .as_string()
-                        .unwrap()
-                        .clone();
-                    let component_value = engine[component_value].compile_impl(
-                        engine,
-                        arg_layout,
-                        instructions,
-                        heap,
-                    );
-                    components.push((component_name, component_value));
-                }
-                MemoryLayout::Struct { components }
-            }
-            NodeOperation::ComposeColor => todo!(),
-            NodeOperation::GetComponent(name) => {
-                let base = engine[self.input.unwrap()].compile_impl(
-                    engine,
-                    arg_layout,
-                    instructions,
-                    heap,
-                );
-                let MemoryLayout::Struct { components } = base else { panic!() };
-                components.iter().find(|x| &x.0 == name).unwrap().1.clone()
-            }
-            NodeOperation::CustomNode { result, input } => {
-                let parameters = engine[*result].collect_parameters(engine);
-                let mut new_args = HashMap::new();
-                let mut arg_index = 0;
-                for param in parameters {
-                    let value = if Some(param.id) == *input {
-                        self.input.unwrap()
-                    } else {
-                        let value = self.arguments[arg_index];
-                        arg_index += 1;
-                        value
-                    };
-                    let value = engine[value].compile_impl(engine, arg_layout, instructions, heap);
-                    new_args.insert(param.id, value);
-                }
-                engine[*result].compile_impl(engine, &new_args, instructions, heap)
-            }
-        };
-        output_layout
-    }
-
     pub fn as_literal(&self) -> &Value2 {
         if let NodeOperation::Literal(literal) = &self.operation {
             literal
@@ -1003,19 +833,6 @@ impl Node {
             literal
         } else {
             panic!("Not a literal.")
-        }
-    }
-
-    pub fn output_type(&self, type_of_other_node: impl FnOnce(NodeId) -> Type2) -> Type2 {
-        use NodeOperation::*;
-        match &self.operation {
-            Literal(lit) => lit.r#type().into(),
-            Parameter(..) => type_of_other_node(self.input.unwrap()),
-            Basic(..) => type_of_other_node(self.input.unwrap()),
-            ComposeStruct => todo!(),
-            ComposeColor => todo!(),
-            GetComponent(_) => todo!(),
-            &CustomNode { result, .. } => type_of_other_node(result),
         }
     }
 }
@@ -1161,64 +978,4 @@ impl BasicOp {
             _ => panic!("Invalid string operation"),
         }
     }
-
-    fn compile_int(
-        &self,
-        input_1: usize,
-        input_2: usize,
-        instructions: &mut Vec<BytecodeInstruction>,
-        heap: &mut Heap,
-    ) -> MemoryLayout {
-        let output = heap.allocate_space_for_single_value();
-        let op = match self {
-            BasicOp::Add => IntegerOp::Add,
-            BasicOp::Subtract => IntegerOp::Subtract,
-            BasicOp::Multiply => IntegerOp::Multiply,
-            BasicOp::Divide => IntegerOp::Divide,
-        };
-        instructions.push(BytecodeInstruction::BinaryOp {
-            op: BinaryOp::IntegerOp(op),
-            input_1,
-            input_2,
-            output,
-        });
-        MemoryLayout::Integer(output)
-    }
-
-    fn compile_float(
-        &self,
-        input_1: usize,
-        input_2: usize,
-        instructions: &mut Vec<BytecodeInstruction>,
-        heap: &mut Heap,
-    ) -> MemoryLayout {
-        let output = heap.allocate_space_for_single_value();
-        let op = match self {
-            BasicOp::Add => FloatOp::Add,
-            BasicOp::Subtract => FloatOp::Subtract,
-            BasicOp::Multiply => FloatOp::Multiply,
-            BasicOp::Divide => FloatOp::Divide,
-        };
-        instructions.push(BytecodeInstruction::BinaryOp {
-            op: BinaryOp::FloatOp(op),
-            input_1,
-            input_2,
-            output,
-        });
-        MemoryLayout::Integer(output)
-    }
-}
-
-fn cast_int_to_float(
-    int: usize,
-    instructions: &mut Vec<BytecodeInstruction>,
-    heap: &mut Heap,
-) -> usize {
-    let cast = heap.allocate_space_for_single_value();
-    instructions.push(BytecodeInstruction::UnaryOp {
-        op: UnaryOp::CastIntToFloat,
-        input: int,
-        output: cast,
-    });
-    cast
 }

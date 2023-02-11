@@ -1,5 +1,5 @@
 use renderer::{Position, Shapes, Size};
-use theme::{NODE_GUTTER_WIDTH, NODE_HEIGHT, NODE_PARAMETER_PADDING, NODE_WIDTH};
+use theme::{NODE_HEIGHT, NODE_WIDTH};
 
 use crate::engine::{NodeId, ToolId, Value2};
 
@@ -48,51 +48,6 @@ impl BoundingBox {
     pub fn contains(&self, pos: Position) -> bool {
         pos.x >= self.start.x && pos.y >= self.start.y && pos.x <= self.end.x && pos.y <= self.end.y
     }
-}
-
-pub struct Socket {
-    pub node: Node,
-    pub name: String,
-}
-
-impl Socket {
-    pub fn new(node: Node, name: String) -> Self {
-        Self { node, name }
-    }
-
-    pub fn size(&self) -> Size {
-        self.node.size()
-    }
-}
-
-pub struct Node {
-    pub name: String,
-    pub sockets: Vec<Socket>,
-}
-
-impl Node {
-    pub fn size(&self) -> Size {
-        if self.sockets.len() == 0 {
-            Size {
-                width: NODE_WIDTH,
-                height: NODE_HEIGHT,
-            }
-        } else {
-            let socket_child_sizes = self.sockets.iter().map(Socket::size);
-            let size_from_children = socket_child_sizes.fold(Size::zero(), |prev, next| Size {
-                width: prev.width.max(next.width),
-                height: prev.height + next.height,
-            });
-            Size {
-                width: size_from_children.width + NODE_PARAMETER_PADDING + NODE_GUTTER_WIDTH,
-                height: size_from_children.height
-                    + (self.sockets.len() as f32 + 0.5) * NODE_PARAMETER_PADDING
-                    + NODE_HEIGHT,
-            }
-        }
-    }
-
-    pub fn draw(&self, _start: Position, _containing_socket_name: &str, _layer: &mut Shapes) {}
 }
 
 pub struct SimpleValueWidget {

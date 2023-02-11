@@ -11,11 +11,6 @@ use crate::{
     widgets::{BoundingBox, BoundingBoxKind},
 };
 
-#[derive(Clone, Debug)]
-pub enum DragTarget {
-    Parameter(ParameterId),
-}
-
 pub struct App {
     window: Window,
     render_engine: RenderEngine,
