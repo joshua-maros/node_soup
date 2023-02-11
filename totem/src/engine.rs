@@ -3,6 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use bytemuck::Zeroable;
 use cranelift::{
     codegen::{ir::Function, Context},
     prelude::*,
@@ -12,9 +13,7 @@ use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
 use maplit::{hashmap, hashset};
 
-use crate::{
-    util::{self, Id, IdCreator},
-};
+use crate::util::{self, Id, IdCreator};
 
 struct CodeGenerationContext {
     builder_c: FunctionBuilderContext,
@@ -70,17 +69,23 @@ impl CodeGenerationContext {
         }
     }
 
-    fn get_node_signature(_nodes: &HashMap<NodeId, Node>, _node: NodeId) -> Signature {
+    fn get_node_signature(
+        module: &JITModule,
+        nodes: &HashMap<NodeId, Node>,
+        node: NodeId,
+    ) -> Signature {
+        let ptr_type = module.target_config().pointer_type();
+        let params = nodes[&node].collect_parameter_nodes(node, nodes);
         Signature {
-            params: vec![],
-            returns: vec![AbiParam::new(types::F32)],
+            params: vec![AbiParam::new(ptr_type); params.len() + 1],
+            returns: vec![],
             call_conv: isa::CallConv::Fast,
         }
     }
 
     fn get_node_declaration(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> FuncId {
         *self.functions.entry(node).or_insert_with(|| {
-            let sig = Self::get_node_signature(nodes, node);
+            let sig = Self::get_node_signature(&self.module, nodes, node);
             let id = self
                 .module
                 .declare_function(&format!("Execute {:#?}", node), Linkage::Export, &sig)
@@ -145,10 +150,12 @@ impl CodeGenerationContext {
         }
 
         self.codegen_c.func = Function::new();
-        self.codegen_c.func.signature = Self::get_node_signature(nodes, node);
+        self.codegen_c.func.signature = Self::get_node_signature(&self.module, nodes, node);
         let mut builder = FunctionBuilder::new(&mut self.codegen_c.func, &mut self.builder_c);
         let root_block = builder.create_block();
+        builder.append_block_params_for_function_params(root_block);
         builder.switch_to_block(root_block);
+        let output_ptr = builder.block_params(root_block)[0];
         let ctx = NodeDefinitionContext {
             func_builder: &mut builder,
             constants: &mut self.constants,
@@ -157,38 +164,68 @@ impl CodeGenerationContext {
             nodes,
             node,
         };
-        let retval = Self::compile_node_to_instructions(ctx);
-        builder.ins().return_(&[retval]);
+        Self::compile_node_to_instructions(ctx, output_ptr);
+        builder.ins().return_(&[]);
         builder.seal_block(root_block);
         builder.finalize();
         if self.previously_defined_functions.contains(&node) {
-            println!("Redefining.");
             self.module.prepare_for_function_redefine(func_id).unwrap();
         } else {
-            println!("Noting.");
             self.previously_defined_functions.insert(node);
         }
         self.module
             .define_function(func_id, &mut self.codegen_c)
             .unwrap();
-        println!("Defined.");
     }
 
-    fn execute_node_implementation<O>(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> O {
+    fn execute_node_implementation<O: Zeroable>(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        node: NodeId,
+    ) -> O {
         let id = self.get_node_declaration(nodes, node);
         let func = self.module.get_finalized_function(id);
-        let func = unsafe { std::mem::transmute::<_, fn() -> O>(func) };
-        func()
+        let func = unsafe { std::mem::transmute::<_, fn(&mut O)>(func) };
+        let mut output = O::zeroed();
+        func(&mut output);
+        output
     }
 
-    fn load_global_data(c: NodeDefinitionContext, ty: Type, id: DataId) -> Value {
+    fn load_global_data(c: NodeDefinitionContext, ty: Type, id: DataId, output_ptr: Value) {
         let local_id = c.module.declare_data_in_func(id, c.func_builder.func);
         let ptr_type = c.module.target_config().pointer_type();
         let ptr = c.func_builder.ins().symbol_value(ptr_type, local_id);
-        c.func_builder.ins().load(ty, MemFlags::new(), ptr, 0)
+        let value = c.func_builder.ins().load(ty, MemFlags::new(), ptr, 0);
+        c.func_builder
+            .ins()
+            .store(MemFlags::new(), value, output_ptr, 0);
     }
 
-    fn compile_node_to_instructions(mut c: NodeDefinitionContext) -> Value {
+    fn node_output_layout(c: &NodeDefinitionContext, node: NodeId) -> DataLayout {
+        let node = &c.nodes[&node];
+        match &node.operation {
+            NodeOperation::Literal(Value2::Float(..)) => DataLayout::Float,
+            NodeOperation::Literal(Value2::Integer(..)) => DataLayout::Int,
+            NodeOperation::Literal(..) => todo!(),
+            NodeOperation::Parameter(_) => Self::node_output_layout(c, node.input.unwrap()),
+            NodeOperation::Basic(_) => todo!(),
+            NodeOperation::ComposeStruct(_, component_names) => {
+                let mut components = Vec::new();
+                for (label, &value) in component_names.iter().zip(node.arguments.iter()) {
+                    components.push((label.clone(), Self::node_output_layout(c, value)));
+                }
+                DataLayout::Struct { components }
+            }
+            NodeOperation::ComposeColor => todo!(),
+            NodeOperation::GetComponent(name) => {
+                let DataLayout::Struct { components }= Self::node_output_layout(c, node.input.unwrap()) else { panic!() };
+                components.into_iter().find(|x| &x.0 == name).unwrap().1
+            }
+            NodeOperation::CustomNode { result, input } => todo!(),
+        }
+    }
+
+    fn compile_node_to_instructions(mut c: NodeDefinitionContext, output_ptr: Value) {
         let node = &c.nodes[&c.node];
         match &node.operation {
             NodeOperation::Literal(value) => {
@@ -196,8 +233,8 @@ impl CodeGenerationContext {
                     Self::get_constant_declaration(c.constants, c.data_c, c.module, c.node, value);
                 match value {
                     Value2::Boolean(_) => todo!(),
-                    Value2::Integer(_) => Self::load_global_data(c, types::I32, data),
-                    Value2::Float(_) => Self::load_global_data(c, types::F32, data),
+                    Value2::Integer(_) => Self::load_global_data(c, types::I32, data, output_ptr),
+                    Value2::Float(_) => Self::load_global_data(c, types::F32, data, output_ptr),
                     Value2::String(_) => todo!(),
                     Value2::Struct {
                         name: _,
@@ -211,24 +248,102 @@ impl CodeGenerationContext {
                 let input = node.input.unwrap();
                 let argument = node.arguments[0];
                 drop(node);
-                let input = Self::compile_node_to_instructions(c.reborrow(input));
-                let argument = Self::compile_node_to_instructions(c.reborrow(argument));
+                Self::compile_node_to_instructions(c.reborrow(input), output_ptr);
+                let argument_ss = c
+                    .func_builder
+                    .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 4));
+                let argument_ptr = c.func_builder.ins().stack_addr(
+                    c.module.target_config().pointer_type(),
+                    argument_ss,
+                    0,
+                );
+                Self::compile_node_to_instructions(c.reborrow(argument), argument_ptr);
+                let input = c
+                    .func_builder
+                    .ins()
+                    .load(types::F32, MemFlags::new(), output_ptr, 0);
+                let argument =
+                    c.func_builder
+                        .ins()
+                        .load(types::F32, MemFlags::new(), argument_ptr, 0);
                 let result = match op {
                     BasicOp::Add => c.func_builder.ins().fadd(input, argument),
                     BasicOp::Subtract => c.func_builder.ins().fsub(input, argument),
                     BasicOp::Multiply => c.func_builder.ins().fmul(input, argument),
                     BasicOp::Divide => c.func_builder.ins().fdiv(input, argument),
                 };
+                c.func_builder
+                    .ins()
+                    .store(MemFlags::new(), result, output_ptr, 0);
                 drop(c);
-                result
             }
-            NodeOperation::ComposeStruct => todo!(),
+            NodeOperation::ComposeStruct(_, _) => {
+                let mut offset = 0;
+                for arg in c.nodes[&c.node].arguments.clone() {
+                    let offset_output = c.func_builder.ins().iadd_imm(output_ptr, offset as i64);
+                    Self::compile_node_to_instructions(c.reborrow(arg), offset_output);
+                    offset += Self::node_output_layout(&c, arg).len();
+                }
+            }
             NodeOperation::ComposeColor => todo!(),
-            NodeOperation::GetComponent(_) => todo!(),
+            NodeOperation::GetComponent(name) => {
+                let input = c.nodes[&c.node].input.unwrap();
+                let layout = Self::node_output_layout(&c, input);
+                let len = layout.len();
+                let DataLayout::Struct { components } = layout else { panic!() };
+                let stack_slot = c
+                    .func_builder
+                    .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, len));
+                let ptr_type = c.module.target_config().pointer_type();
+                let input_ptr = c.func_builder.ins().stack_addr(ptr_type, stack_slot, 0);
+                Self::compile_node_to_instructions(c.reborrow(input), input_ptr);
+                let mut input_component_offset = 0;
+                let mut input_component_len = 0;
+                for (candidate_name, layout) in components {
+                    if name == &candidate_name {
+                        input_component_len = layout.len();
+                        break;
+                    } else {
+                        input_component_offset += layout.len();
+                    }
+                }
+                let input_component_ptr = c.func_builder.ins().stack_addr(
+                    ptr_type,
+                    stack_slot,
+                    input_component_offset as i32,
+                );
+                let input_component_len = c
+                    .func_builder
+                    .ins()
+                    .iconst(ptr_type, input_component_len as i64);
+                assert!(input_component_offset < len);
+                c.func_builder.call_memcpy(
+                    c.module.target_config(),
+                    output_ptr,
+                    input_component_ptr,
+                    input_component_len,
+                );
+            }
             NodeOperation::CustomNode {
                 result: _,
                 input: _,
             } => todo!(),
+        }
+    }
+}
+
+pub enum DataLayout {
+    Float,
+    Int,
+    Struct {
+        components: Vec<(String, DataLayout)>,
+    },
+}
+impl DataLayout {
+    fn len(&self) -> u32 {
+        match self {
+            DataLayout::Float | DataLayout::Int => 4,
+            DataLayout::Struct { components } => components.iter().map(|c| c.1.len()).sum(),
         }
     }
 }
@@ -571,7 +686,7 @@ impl Engine {
         self.context.write_constant_data(node, data);
     }
 
-    pub fn execute<O>(&mut self, node: NodeId) -> O {
+    pub fn execute<O: Zeroable>(&mut self, node: NodeId) -> O {
         self.context.execute_node_implementation(&self.nodes, node)
     }
 
@@ -586,30 +701,48 @@ impl Engine {
     }
 
     fn setup_demo(&mut self, _builtins: &BuiltinDefinitions) {
-        let value = self.root_node();
-        let param1 = self.push_literal_node(2.0.into());
-        let value = self.push_node(Node {
-            operation: NodeOperation::Basic(BasicOp::Multiply),
-            input: Some(value),
-            arguments: vec![param1],
-        });
-        // let param2 = self.push_simple_parameter("Value", 123.0.into());
-        let param2 = self.push_literal_node(123.0.into());
-        let root = self.push_node(Node {
-            operation: NodeOperation::Basic(BasicOp::Add),
-            input: Some(value),
-            arguments: vec![param2],
-        });
-
-        // let value = self.push_get_component(builtins.display_position.1, "X");
-        // let divisor = self.push_literal_node(360.0.into());
-        // let root = self.push_node(Node {
-        //     operation: NodeOperation::Basic(BasicOp::Divide),
+        // let value = self.root_node();
+        // let param1 = self.push_literal_node(2.0.into());
+        // let value = self.push_node(Node {
+        //     operation: NodeOperation::Basic(BasicOp::Multiply),
         //     input: Some(value),
-        //     arguments: vec![divisor],
+        //     arguments: vec![param1],
+        // });
+        // // let param2 = self.push_simple_parameter("Value", 123.0.into());
+        // let param2 = self.push_literal_node(123.0.into());
+        // let root = self.push_node(Node {
+        //     operation: NodeOperation::Basic(BasicOp::Add),
+        //     input: Some(value),
+        //     arguments: vec![param2],
         // });
 
+        // let value = self.push_get_component(builtins.display_position.1, "X");
+        let vec = self.push_simple_struct("Vector/2D", vec![("X", 1.0.into()), ("Y", 2.0.into())]);
+        let value = self.push_get_component(vec, "X");
+        let divisor = self.push_literal_node(360.0.into());
+        let root = self.push_node(Node {
+            operation: NodeOperation::Basic(BasicOp::Divide),
+            input: Some(value),
+            arguments: vec![divisor],
+        });
+
         self.set_root(root);
+    }
+
+    pub fn push_simple_struct(&mut self, name: &str, components: Vec<(&str, Value2)>) -> NodeId {
+        let mut args = vec![];
+        for (_, component) in &components {
+            args.push(self.push_literal_node(component.clone()));
+        }
+        let node = self.push_node(Node {
+            operation: NodeOperation::ComposeStruct(
+                name.to_owned(),
+                components.iter().map(|x| x.0.to_owned()).collect_vec(),
+            ),
+            input: None,
+            arguments: args,
+        });
+        node
     }
 
     pub fn push_simple_struct_composer(
@@ -617,18 +750,23 @@ impl Engine {
         name: &str,
         default_components: Vec<(&str, Value2)>,
     ) -> (NodeId, Vec<ParameterId>) {
-        let mut args = vec![self.push_literal_node(name.to_owned().into())];
+        let mut args = vec![];
         let mut parameters = vec![];
-        for (name, default) in default_components {
-            let name = self.push_literal_node(name.to_owned().into());
+        for (name, default) in &default_components {
+            let name = self.push_literal_node(name.to_owned().to_owned().into());
             let default = self.push_literal_node(default.clone());
             let (param, arg) = self.push_parameter(name, default);
-            args.push(name);
             args.push(arg);
             parameters.push(param);
         }
         let node = self.push_node(Node {
-            operation: NodeOperation::ComposeStruct,
+            operation: NodeOperation::ComposeStruct(
+                name.to_owned(),
+                default_components
+                    .iter()
+                    .map(|x| x.0.to_owned())
+                    .collect_vec(),
+            ),
             input: None,
             arguments: args,
         });
@@ -719,6 +857,26 @@ pub struct Node {
 }
 
 impl Node {
+    pub fn collect_parameter_nodes(
+        &self,
+        my_id: NodeId,
+        nodes: &HashMap<NodeId, Node>,
+    ) -> HashSet<NodeId> {
+        if let NodeOperation::Parameter(..) = &self.operation {
+            hashset![my_id]
+        } else {
+            self.arguments
+                .iter()
+                .chain(self.input.iter())
+                .flat_map(|node_id| {
+                    nodes[node_id]
+                        .collect_parameter_nodes(*node_id, nodes)
+                        .into_iter()
+                })
+                .collect()
+        }
+    }
+
     pub fn collect_parameters(&self, engine: &Engine) -> Vec<ParameterDescription> {
         let mut into = Vec::new();
         self.collect_parameters_into(engine, &mut into);
@@ -758,21 +916,14 @@ impl Node {
                 let b = engine[self.arguments[0]].evaluate(engine, arguments);
                 op.combine(&a, &b)
             }
-            NodeOperation::ComposeStruct => {
-                let name = engine[self.arguments[0]]
-                    .evaluate(engine, arguments)
-                    .as_string()
-                    .unwrap()
-                    .clone();
+            NodeOperation::ComposeStruct(name, component_names) => {
+                let name = name.clone();
                 let mut components = Vec::new();
-                for (component_name, component_value) in self.arguments[1..].iter().tuples() {
-                    let component_name = engine[*component_name]
-                        .evaluate(engine, arguments)
-                        .as_string()
-                        .unwrap()
-                        .clone();
+                for (component_name, component_value) in
+                    component_names.iter().zip(self.arguments.iter())
+                {
                     let component_value = engine[*component_value].evaluate(engine, arguments);
-                    components.push((component_name, component_value));
+                    components.push((component_name.clone(), component_value));
                 }
                 Value2::Struct { name, components }
             }
@@ -842,7 +993,7 @@ pub enum NodeOperation {
     Literal(Value2),
     Parameter(ParameterId),
     Basic(BasicOp),
-    ComposeStruct,
+    ComposeStruct(String, Vec<String>),
     ComposeColor,
     GetComponent(String),
     CustomNode {
@@ -858,17 +1009,21 @@ impl NodeOperation {
             Literal(value) => value.display(),
             Parameter(..) => format!("Parameter"),
             Basic(op) => op.name().to_owned(),
-            ComposeStruct => format!("Compose Struct"),
+            ComposeStruct(name, ..) => format!("Make {}", name),
             ComposeColor => format!("Compose Color"),
-            GetComponent(component_name) => format!("{} Component", component_name),
+            GetComponent(component_name) => format!("Get {}", component_name),
             CustomNode { .. } => format!("This Name Shouldn't Show Up"),
         }
     }
 
-    pub fn param_name<'a>(&self, index: usize, parameters: &'a [ParameterDescription]) -> &'a str {
+    pub fn param_name<'a>(
+        &'a self,
+        index: usize,
+        parameters: &'a [ParameterDescription],
+    ) -> &'a str {
         use NodeOperation::*;
         match self {
-            ComposeStruct => todo!(),
+            ComposeStruct(_, component_names) => &component_names[index],
             CustomNode { input, .. } => {
                 &parameters
                     .iter()
@@ -884,16 +1039,16 @@ impl NodeOperation {
         }
     }
 
-    fn param_names(&self) -> &'static [&'static str] {
+    fn param_names(&self) -> Vec<&str> {
         use NodeOperation::*;
         match self {
-            Literal(..) => &[],
-            Parameter(..) => &["Name"],
-            Basic(op) => op.param_names(),
-            ComposeStruct => &["This Label Shouldn't Show Up"],
-            ComposeColor => &["Channel 1", "Channel 2", "Channel 3"],
-            GetComponent(..) => &[],
-            CustomNode { .. } => &["This Label Shouldn't Show Up"],
+            Literal(..) => vec![],
+            Parameter(..) => vec!["Name"],
+            Basic(op) => Vec::from(op.param_names()),
+            ComposeStruct(_, field_names) => field_names.iter().map(|x| &x[..]).collect_vec(),
+            ComposeColor => vec!["Channel 1", "Channel 2", "Channel 3"],
+            GetComponent(..) => vec![],
+            CustomNode { .. } => vec!["This Label Shouldn't Show Up"],
         }
     }
 }
