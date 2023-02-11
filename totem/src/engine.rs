@@ -15,15 +15,25 @@ use maplit::{hashmap, hashset};
 
 use crate::util::{self, Id, IdCreator};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum FunctionKind {
+    /// Uses fastcall convention, has 1 parameter for output plus a number of
+    /// parameters equal to the number of parameters the original node has.
+    InternalImplementation(NodeId),
+    /// Uses systemv convention, has 1 parameter pointing to an output plus
+    /// packed parameters after appropriate offsets.
+    ExternalWrapper(NodeId),
+}
+
 struct CodeGenerationContext {
     builder_c: FunctionBuilderContext,
     codegen_c: Context,
     data_c: DataContext,
     module: JITModule,
-    functions: HashMap<NodeId, FuncId>,
+    functions: HashMap<FunctionKind, FuncId>,
     constants: HashMap<NodeId, DataId>,
-    undefined_functions: HashSet<NodeId>,
-    previously_defined_functions: HashSet<NodeId>,
+    undefined_functions: HashSet<FunctionKind>,
+    previously_defined_functions: HashSet<FunctionKind>,
 }
 
 struct NodeDefinitionContext<'x, 'f> {
@@ -31,7 +41,10 @@ struct NodeDefinitionContext<'x, 'f> {
     constants: &'x mut HashMap<NodeId, DataId>,
     data_c: &'x mut DataContext,
     module: &'x mut JITModule,
+    param_ptrs: &'x HashMap<NodeId, Value>,
     nodes: &'x HashMap<NodeId, Node>,
+    functions: &'x mut HashMap<FunctionKind, FuncId>,
+    undefined_functions: &'x mut HashSet<FunctionKind>,
     node: NodeId,
 }
 
@@ -45,7 +58,10 @@ impl<'x, 'f> NodeDefinitionContext<'x, 'f> {
             constants: &mut *self.constants,
             data_c: &mut *self.data_c,
             module: &mut *self.module,
+            param_ptrs: &*self.param_ptrs,
             nodes: &*self.nodes,
+            functions: &mut *self.functions,
+            undefined_functions: &mut *self.undefined_functions,
             node: new_node,
         }
     }
@@ -69,28 +85,55 @@ impl CodeGenerationContext {
         }
     }
 
-    fn get_node_signature(
+    fn get_function_signature(
         module: &JITModule,
         nodes: &HashMap<NodeId, Node>,
-        node: NodeId,
+        function: FunctionKind,
     ) -> Signature {
         let ptr_type = module.target_config().pointer_type();
-        let params = nodes[&node].collect_parameter_nodes(node, nodes);
-        Signature {
-            params: vec![AbiParam::new(ptr_type); params.len() + 1],
-            returns: vec![],
-            call_conv: isa::CallConv::Fast,
+        if let FunctionKind::InternalImplementation(node) = function {
+            let params = nodes[&node].collect_parameter_nodes(node, nodes);
+            Signature {
+                params: vec![AbiParam::new(ptr_type); 1 + params.len()],
+                returns: vec![],
+                call_conv: isa::CallConv::Fast,
+            }
+        } else {
+            Signature {
+                params: vec![AbiParam::new(ptr_type)],
+                returns: vec![],
+                call_conv: isa::CallConv::SystemV,
+            }
         }
     }
 
-    fn get_node_declaration(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> FuncId {
-        *self.functions.entry(node).or_insert_with(|| {
-            let sig = Self::get_node_signature(&self.module, nodes, node);
-            let id = self
-                .module
-                .declare_function(&format!("Execute {:#?}", node), Linkage::Export, &sig)
+    fn get_function_declaration(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        function: FunctionKind,
+    ) -> FuncId {
+        Self::get_function_declaration_impl(
+            &mut self.functions,
+            &mut self.undefined_functions,
+            &mut self.module,
+            nodes,
+            function,
+        )
+    }
+
+    fn get_function_declaration_impl(
+        functions: &mut HashMap<FunctionKind, FuncId>,
+        undefined_functions: &mut HashSet<FunctionKind>,
+        module: &mut JITModule,
+        nodes: &HashMap<NodeId, Node>,
+        function: FunctionKind,
+    ) -> FuncId {
+        *functions.entry(function).or_insert_with(|| {
+            let sig = Self::get_function_signature(&*module, nodes, function);
+            let id = module
+                .declare_function(&format!("{:#?}", function), Linkage::Export, &sig)
                 .unwrap();
-            self.undefined_functions.insert(node);
+            undefined_functions.insert(function);
             id
         })
     }
@@ -127,12 +170,16 @@ impl CodeGenerationContext {
     }
 
     /// Also defines all nodes this node is dependant on.
-    fn define_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
+    fn define_function_implementation(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        function: FunctionKind,
+    ) {
         let time = std::time::Instant::now();
-        self.define_node_implementation_impl(nodes, node);
+        self.define_function_implementation_impl(nodes, function);
         while self.undefined_functions.len() > 0 {
-            for undefined_node in std::mem::take(&mut self.undefined_functions) {
-                self.define_node_implementation_impl(nodes, undefined_node);
+            for undefined_function in self.undefined_functions.clone() {
+                self.define_function_implementation_impl(nodes, undefined_function);
             }
         }
         self.module.finalize_definitions().unwrap();
@@ -141,54 +188,92 @@ impl CodeGenerationContext {
         }
     }
 
-    fn define_node_implementation_impl(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
-        let func_id = self.get_node_declaration(nodes, node);
-        if self.undefined_functions.contains(&node) {
-            self.undefined_functions.remove(&node);
+    fn define_function_implementation_impl(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        function: FunctionKind,
+    ) {
+        let func_id = self.get_function_declaration(nodes, function);
+        if self.undefined_functions.contains(&function) {
+            self.undefined_functions.remove(&function);
         } else {
             return;
         }
 
         self.codegen_c.func = Function::new();
-        self.codegen_c.func.signature = Self::get_node_signature(&self.module, nodes, node);
+        self.codegen_c.func.signature = Self::get_function_signature(&self.module, nodes, function);
         let mut builder = FunctionBuilder::new(&mut self.codegen_c.func, &mut self.builder_c);
         let root_block = builder.create_block();
         builder.append_block_params_for_function_params(root_block);
         builder.switch_to_block(root_block);
         let output_ptr = builder.block_params(root_block)[0];
+        let (node, param_ptrs) = if let FunctionKind::InternalImplementation(node) = function {
+            (
+                node,
+                nodes[&node]
+                    .collect_parameter_nodes(node, nodes)
+                    .into_iter()
+                    .sorted()
+                    .zip(builder.block_params(root_block)[1..].iter().copied())
+                    .collect(),
+            )
+        } else if let FunctionKind::ExternalWrapper(node) = function {
+            let output_layout = Self::node_output_layout(nodes, node);
+            let mut offset = output_layout.len();
+            let mut parameter_ptrs = HashMap::new();
+            for parameter in nodes[&node]
+                .collect_parameter_nodes(node, nodes)
+                .into_iter()
+                .sorted()
+            {
+                let parameter_ptr = builder.ins().iadd_imm(output_ptr, offset as i64);
+                offset += Self::node_output_layout(nodes, parameter).len();
+                parameter_ptrs.insert(parameter, parameter_ptr);
+            }
+            (node, parameter_ptrs)
+        } else {
+            todo!()
+        };
         let ctx = NodeDefinitionContext {
             func_builder: &mut builder,
             constants: &mut self.constants,
             data_c: &mut self.data_c,
             module: &mut self.module,
+            param_ptrs: &param_ptrs,
+            functions: &mut self.functions,
+            undefined_functions: &mut self.undefined_functions,
             nodes,
             node,
         };
-        Self::compile_node_to_instructions(ctx, output_ptr);
+        if let FunctionKind::InternalImplementation(..) = function {
+            Self::compile_node_to_instructions(ctx, output_ptr);
+        } else if let FunctionKind::ExternalWrapper(..) = function {
+            Self::compile_node_wrapper(ctx, output_ptr);
+        }
         builder.ins().return_(&[]);
         builder.seal_block(root_block);
         builder.finalize();
-        if self.previously_defined_functions.contains(&node) {
+        if self.previously_defined_functions.contains(&function) {
             self.module.prepare_for_function_redefine(func_id).unwrap();
         } else {
-            self.previously_defined_functions.insert(node);
+            self.previously_defined_functions.insert(function);
         }
+        println!("{:#?}", self.codegen_c.func);
         self.module
             .define_function(func_id, &mut self.codegen_c)
             .unwrap();
     }
 
-    fn execute_node_implementation<O: Zeroable>(
+    unsafe fn execute_node_implementation<IO>(
         &mut self,
         nodes: &HashMap<NodeId, Node>,
         node: NodeId,
-    ) -> O {
-        let id = self.get_node_declaration(nodes, node);
+        io: &mut IO,
+    ) {
+        let id = self.get_function_declaration(nodes, FunctionKind::ExternalWrapper(node));
         let func = self.module.get_finalized_function(id);
-        let func = unsafe { std::mem::transmute::<_, fn(&mut O)>(func) };
-        let mut output = O::zeroed();
-        func(&mut output);
-        output
+        let func = std::mem::transmute::<_, fn(&mut IO)>(func);
+        func(io);
     }
 
     fn load_global_data(c: NodeDefinitionContext, ty: Type, id: DataId, output_ptr: Value) {
@@ -201,27 +286,27 @@ impl CodeGenerationContext {
             .store(MemFlags::new(), value, output_ptr, 0);
     }
 
-    fn node_output_layout(c: &NodeDefinitionContext, node: NodeId) -> DataLayout {
-        let node = &c.nodes[&node];
+    fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> DataLayout {
+        let node = &nodes[&node];
         match &node.operation {
             NodeOperation::Literal(Value2::Float(..)) => DataLayout::Float,
             NodeOperation::Literal(Value2::Integer(..)) => DataLayout::Int,
             NodeOperation::Literal(..) => todo!(),
-            NodeOperation::Parameter(_) => Self::node_output_layout(c, node.input.unwrap()),
-            NodeOperation::Basic(_) => todo!(),
+            NodeOperation::Parameter(_) => Self::node_output_layout(nodes, node.input.unwrap()),
+            NodeOperation::Basic(_) => Self::node_output_layout(nodes, node.input.unwrap()),
             NodeOperation::ComposeStruct(_, component_names) => {
                 let mut components = Vec::new();
                 for (label, &value) in component_names.iter().zip(node.arguments.iter()) {
-                    components.push((label.clone(), Self::node_output_layout(c, value)));
+                    components.push((label.clone(), Self::node_output_layout(nodes, value)));
                 }
                 DataLayout::Struct { components }
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
-                let DataLayout::Struct { components }= Self::node_output_layout(c, node.input.unwrap()) else { panic!() };
+                let DataLayout::Struct { components }= Self::node_output_layout(nodes, node.input.unwrap()) else { panic!() };
                 components.into_iter().find(|x| &x.0 == name).unwrap().1
             }
-            NodeOperation::CustomNode { result, input } => todo!(),
+            NodeOperation::CustomNode { result, .. } => Self::node_output_layout(nodes, *result),
         }
     }
 
@@ -243,7 +328,14 @@ impl CodeGenerationContext {
                     Value2::Invalid => todo!(),
                 }
             }
-            NodeOperation::Parameter(_) => todo!(),
+            NodeOperation::Parameter(_) => {
+                let source_ptr = c.param_ptrs[&c.node];
+                let len = Self::node_output_layout(c.nodes, c.nodes[&c.node].input.unwrap()).len();
+                let ptr_type = c.module.target_config().pointer_type();
+                let len = c.func_builder.ins().iconst(ptr_type, len as i64);
+                c.func_builder
+                    .call_memcpy(c.module.target_config(), output_ptr, source_ptr, len);
+            }
             NodeOperation::Basic(op) => {
                 let input = node.input.unwrap();
                 let argument = node.arguments[0];
@@ -282,13 +374,13 @@ impl CodeGenerationContext {
                 for arg in c.nodes[&c.node].arguments.clone() {
                     let offset_output = c.func_builder.ins().iadd_imm(output_ptr, offset as i64);
                     Self::compile_node_to_instructions(c.reborrow(arg), offset_output);
-                    offset += Self::node_output_layout(&c, arg).len();
+                    offset += Self::node_output_layout(c.nodes, arg).len();
                 }
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let input = c.nodes[&c.node].input.unwrap();
-                let layout = Self::node_output_layout(&c, input);
+                let layout = Self::node_output_layout(c.nodes, input);
                 let len = layout.len();
                 let DataLayout::Struct { components } = layout else { panic!() };
                 let stack_slot = c
@@ -324,11 +416,54 @@ impl CodeGenerationContext {
                     input_component_len,
                 );
             }
-            NodeOperation::CustomNode {
-                result: _,
-                input: _,
-            } => todo!(),
+            NodeOperation::CustomNode { result, .. } => {
+                let func = Self::get_function_declaration_impl(
+                    c.functions,
+                    c.undefined_functions,
+                    c.module,
+                    c.nodes,
+                    FunctionKind::InternalImplementation(*result),
+                );
+                let func = c.module.declare_func_in_func(func, c.func_builder.func);
+                let node = &c.nodes[&c.node];
+                let arg_nodes = node.input.iter().chain(node.arguments.iter()).copied();
+                let mut args = vec![output_ptr];
+                for arg in arg_nodes {
+                    let layout = Self::node_output_layout(c.nodes, arg);
+                    let len = layout.len();
+                    let stack_slot = c.func_builder.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        len,
+                    ));
+                    let ptr_type = c.module.target_config().pointer_type();
+                    let arg_ptr = c.func_builder.ins().stack_addr(ptr_type, stack_slot, 0);
+                    Self::compile_node_to_instructions(c.reborrow(arg), arg_ptr);
+                    args.push(arg_ptr);
+                }
+                c.func_builder.ins().call(func, &args);
+            }
         }
+    }
+
+    fn compile_node_wrapper(c: NodeDefinitionContext, output_ptr: Value) {
+        let fun = Self::get_function_declaration_impl(
+            c.functions,
+            c.undefined_functions,
+            c.module,
+            c.nodes,
+            FunctionKind::InternalImplementation(c.node),
+        );
+        let fun = c.module.declare_func_in_func(fun, c.func_builder.func);
+        let args = std::iter::once(output_ptr)
+            .chain(
+                c.param_ptrs
+                    .iter()
+                    .sorted_by_key(|x| *x.0)
+                    .map(|x| x.1)
+                    .copied(),
+            )
+            .collect_vec();
+        c.func_builder.ins().call(fun, &args);
     }
 }
 
@@ -350,6 +485,7 @@ impl DataLayout {
 
 pub struct Parameter {}
 
+#[derive(Debug)]
 pub struct ParameterDescription {
     pub id: ParameterId,
     pub name: String,
@@ -679,15 +815,17 @@ impl Engine {
     }
 
     pub fn compile(&mut self, node: NodeId) {
-        self.context.define_node_implementation(&self.nodes, node);
+        self.context
+            .define_function_implementation(&self.nodes, FunctionKind::ExternalWrapper(node));
     }
 
     pub fn write_constant_data(&mut self, node: NodeId, data: &Value2) {
         self.context.write_constant_data(node, data);
     }
 
-    pub fn execute<O: Zeroable>(&mut self, node: NodeId) -> O {
-        self.context.execute_node_implementation(&self.nodes, node)
+    pub unsafe fn execute<IO>(&mut self, node: NodeId, io: &mut IO) {
+        self.context
+            .execute_node_implementation(&self.nodes, node, io)
     }
 
     fn add_tool(&mut self, tool: Tool) -> ToolId {
@@ -700,7 +838,7 @@ impl Engine {
         &self.tools[&tool]
     }
 
-    fn setup_demo(&mut self, _builtins: &BuiltinDefinitions) {
+    fn setup_demo(&mut self, builtins: &BuiltinDefinitions) {
         // let value = self.root_node();
         // let param1 = self.push_literal_node(2.0.into());
         // let value = self.push_node(Node {
@@ -716,9 +854,20 @@ impl Engine {
         //     arguments: vec![param2],
         // });
 
-        // let value = self.push_get_component(builtins.display_position.1, "X");
-        let vec = self.push_simple_struct("Vector/2D", vec![("X", 1.0.into()), ("Y", 2.0.into())]);
-        let value = self.push_get_component(vec, "X");
+        // let vec = self.push_simple_struct("Vector/2D", vec![("X", 1.0.into()), ("Y",
+        // 2.0.into())]);
+        // let one = self.push_literal_node(1.0.into());
+        // let two = self.push_literal_node(2.0.into());
+        // let vec = self.push_node(Node {
+        //     operation: NodeOperation::CustomNode {
+        //         result: builtins.compose_vector_2d,
+        //         input: None,
+        //     },
+        //     input: None,
+        //     arguments: vec![one, two],
+        // });
+        // let value = self.push_get_component(vec, "X");
+        let value = self.push_get_component(builtins.display_position.1, "X");
         let divisor = self.push_literal_node(360.0.into());
         let root = self.push_node(Node {
             operation: NodeOperation::Basic(BasicOp::Divide),
@@ -1012,7 +1161,7 @@ impl NodeOperation {
             ComposeStruct(name, ..) => format!("Make {}", name),
             ComposeColor => format!("Compose Color"),
             GetComponent(component_name) => format!("Get {}", component_name),
-            CustomNode { .. } => format!("This Name Shouldn't Show Up"),
+            CustomNode { .. } => format!("Todo"),
         }
     }
 
@@ -1024,14 +1173,7 @@ impl NodeOperation {
         use NodeOperation::*;
         match self {
             ComposeStruct(_, component_names) => &component_names[index],
-            CustomNode { input, .. } => {
-                &parameters
-                    .iter()
-                    .filter(|p| *input != Some(p.id))
-                    .nth(index)
-                    .unwrap()
-                    .name
-            }
+            CustomNode { input, result } => "todo",
             _ => {
                 let names = self.param_names();
                 names[index.min(names.len() - 1)]

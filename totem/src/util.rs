@@ -1,4 +1,4 @@
-use std::{fmt::Debug, hash::Hash, marker::PhantomData};
+use std::{cmp::Ordering, fmt::Debug, hash::Hash, marker::PhantomData};
 
 pub fn pretty_format_number(number: f32) -> String {
     if !number.is_finite() {
@@ -94,6 +94,18 @@ impl<Of> Eq for Id<Of> {}
 impl<Of> Hash for Id<Of> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);
+    }
+}
+
+impl<Of> PartialOrd for Id<Of> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl<Of> Ord for Id<Of> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
     }
 }
 

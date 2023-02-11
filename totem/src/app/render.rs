@@ -83,39 +83,32 @@ impl App {
         for param_desc in &parameters {
             arguments.insert(param_desc.id, param_desc.default.clone());
         }
+        self.computation_engine.compile(output_of);
         if parameters
             .iter()
             .any(|param| param.id == self.builtins.display_position.0)
         {
             let mut data = [[0; 4]; 360 * 360];
-            let x_node = self.computation_engine.push_literal_node(0.into());
-            let y_node = self.computation_engine.push_literal_node(0.into());
-            let coordinate_node = self.computation_engine.push_node(Node {
-                operation: NodeOperation::CustomNode {
-                    result: self.builtins.compose_integer_vector_2d,
-                    input: None,
-                },
-                input: None,
-                arguments: vec![x_node, y_node],
-            });
+            let mut input_output = [0u8; 12];
             for y in 0..360 {
-                *self.computation_engine[y_node].as_literal_mut() = y.into();
+                input_output[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
                 for x in 0..360 {
-                    *self.computation_engine[x_node].as_literal_mut() = x.into();
-                    let coordinate = self.computation_engine[coordinate_node]
-                        .evaluate(&self.computation_engine, &HashMap::new());
-                    arguments.insert(self.builtins.display_position.0, coordinate);
-                    let value = self.computation_engine[output_of]
-                        .evaluate(&self.computation_engine, &arguments);
-                    let brightness = (value.as_float().unwrap().clamp(0.0, 1.0) * 255.99) as u8;
+                    input_output[4..8].copy_from_slice(&(y as f32).to_ne_bytes());
+                    unsafe {
+                        self.computation_engine
+                            .execute(output_of, &mut input_output)
+                    };
+                    let value = f32::from_ne_bytes(input_output.as_chunks().0[0]);
+                    let brightness = (value.clamp(0.0, 1.0) * 255.99) as u8;
                     data[((y * 360) + x) as usize] = [brightness, brightness, brightness, 255];
                 }
             }
             self.render_engine.upload_image(0, &data);
             render_texture_output_preview(position, layer, 0)
         } else {
-            self.computation_engine.compile(output_of);
-            let value: f32 = self.computation_engine.execute(output_of);
+            let mut io = [0u8; 4];
+            unsafe { self.computation_engine.execute(output_of, &mut io) };
+            let value: f32 = f32::from_ne_bytes(io);
             render_simple_output_preview(position, layer, &value.into())
         }
     }

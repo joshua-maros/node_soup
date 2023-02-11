@@ -1,3 +1,4 @@
+#![feature(slice_as_chunks)]
 #![feature(ptr_to_from_bits)]
 
 mod app;
