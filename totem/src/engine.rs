@@ -12,6 +12,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
 use maplit::{hashmap, hashset};
+use target_lexicon::Triple;
 
 use crate::util::{self, Id, IdCreator};
 
@@ -68,9 +69,26 @@ impl<'x, 'f> NodeDefinitionContext<'x, 'f> {
 }
 
 impl CodeGenerationContext {
+    fn make_builder() -> JITBuilder {
+        let libcall_names = cranelift_module::default_libcall_names();
+        let mut flag_builder = settings::builder();
+        // On at least AArch64, "colocated" calls use shorter-range relocations,
+        // which might not reach all definitions; we can't handle that here, so
+        // we require long-range relocation types.
+        flag_builder.set("use_colocated_libcalls", "false").unwrap();
+        flag_builder.set("is_pic", "true").unwrap();
+        flag_builder.set("opt_level", "speed").unwrap();
+        let isa_builder = isa::lookup(Triple::host()).unwrap_or_else(|msg| {
+            panic!("host machine is not supported: {}", msg);
+        });
+        let isa = isa_builder
+            .finish(settings::Flags::new(flag_builder))
+            .unwrap();
+        JITBuilder::with_isa(isa, libcall_names)
+    }
+
     fn new() -> Self {
-        let builder = JITBuilder::new(cranelift_module::default_libcall_names());
-        let mut builder = builder.unwrap();
+        let mut builder = Self::make_builder();
         builder.hotswap(true);
         let module = JITModule::new(builder);
         Self {
@@ -175,7 +193,6 @@ impl CodeGenerationContext {
         nodes: &HashMap<NodeId, Node>,
         function: FunctionKind,
     ) {
-        let time = std::time::Instant::now();
         self.define_function_implementation_impl(nodes, function);
         while self.undefined_functions.len() > 0 {
             for undefined_function in self.undefined_functions.clone() {
@@ -183,9 +200,6 @@ impl CodeGenerationContext {
             }
         }
         self.module.finalize_definitions().unwrap();
-        if time.elapsed().as_micros() > 100 {
-            println!("Compile took {:#?}", time.elapsed());
-        }
     }
 
     fn define_function_implementation_impl(

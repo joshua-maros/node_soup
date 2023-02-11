@@ -14,37 +14,44 @@ use crate::{
 };
 
 pub struct PerfCounters {
+    pub compilation_time_acc: Duration,
     pub execution_time_acc: Duration,
     pub upload_time_acc: Duration,
-    pub render_time_acc: Duration,
+    pub gpu_time_acc: Duration,
+    pub total_time_acc: Duration,
     pub samples: u32,
 }
 
 impl PerfCounters {
     pub fn new() -> Self {
         Self {
+            compilation_time_acc: Duration::ZERO,
             execution_time_acc: Duration::ZERO,
             upload_time_acc: Duration::ZERO,
-            render_time_acc: Duration::ZERO,
+            gpu_time_acc: Duration::ZERO,
+            total_time_acc: Duration::ZERO,
             samples: 0,
         }
     }
 
     pub fn report_and_reset_if_appropriate(&mut self) {
-        if self.execution_time_acc + self.upload_time_acc + self.render_time_acc
-            > Duration::new(1, 0)
+        if self.execution_time_acc + self.upload_time_acc + self.gpu_time_acc > Duration::new(1, 0)
         {
+            let c = self.compilation_time_acc.as_millis() as f32 / self.samples as f32;
             let e = self.execution_time_acc.as_millis() as f32 / self.samples as f32;
             let u = self.upload_time_acc.as_millis() as f32 / self.samples as f32;
-            let r = self.render_time_acc.as_millis() as f32 / self.samples as f32;
+            let g = self.gpu_time_acc.as_millis() as f32 / self.samples as f32;
+            let t = self.total_time_acc.as_millis() as f32 / self.samples as f32;
             println!(
-                "({} samples) execution: {:.02}ms, upload: {:.02}ms, render: {:.02}ms",
-                self.samples, e, u, r
+                "({} samples)\n  compilation: {:.02}ms\n  execution: {:.02}ms\n  upload: {:.02}ms\n  gpu: {:.02}ms\n  total: {:.02}ms",
+                self.samples, c, e, u, g,t
             );
             self.samples = 0;
+            self.compilation_time_acc = Duration::ZERO;
             self.execution_time_acc = Duration::ZERO;
             self.upload_time_acc = Duration::ZERO;
-            self.render_time_acc = Duration::ZERO;
+            self.gpu_time_acc = Duration::ZERO;
+            self.total_time_acc = Duration::ZERO;
         }
     }
 }

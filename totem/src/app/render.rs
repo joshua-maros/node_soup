@@ -21,6 +21,7 @@ use crate::{
 
 impl App {
     pub(super) fn render(&mut self) {
+        let total_start = Instant::now();
         let mut bboxes = Vec::new();
         let mut base_layer = Shapes::new();
         bboxes.push(self.render_preview_drawer(&mut base_layer));
@@ -47,7 +48,7 @@ impl App {
         let layers = [&base_layer];
         let start = Instant::now();
         let result = self.render_engine.render(&layers);
-        self.perf_counters.render_time_acc += start.elapsed();
+        self.perf_counters.gpu_time_acc += start.elapsed();
         match result {
             Ok(()) => (),
             Err(SurfaceError::Lost) | Err(SurfaceError::Outdated) => {
@@ -56,6 +57,7 @@ impl App {
             Err(SurfaceError::OutOfMemory) => self.control_flow = ControlFlow::ExitWithCode(1),
             Err(e) => eprintln!("{:#?}", e),
         }
+        self.perf_counters.total_time_acc += total_start.elapsed();
         self.perf_counters.samples += 1;
         self.perf_counters.report_and_reset_if_appropriate();
     }
@@ -87,7 +89,9 @@ impl App {
         for param_desc in &parameters {
             arguments.insert(param_desc.id, param_desc.default.clone());
         }
+        let start = Instant::now();
         self.computation_engine.compile(output_of);
+        self.perf_counters.compilation_time_acc += start.elapsed();
         if parameters
             .iter()
             .any(|param| param.id == self.builtins.display_position.0)

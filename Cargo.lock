@@ -2022,6 +2022,7 @@ dependencies = [
  "maplit",
  "pollster",
  "renderer",
+ "target-lexicon",
  "theme",
 ]
 
