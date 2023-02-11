@@ -290,6 +290,29 @@ impl CodeGenerationContext {
         func(io);
     }
 
+    /// Optimized way to execute a node multiple times in a row
+    /// (execute_node_implementation has to look up the implementation every
+    /// time you invoke it, which contributes significantly to the performance
+    /// of very small functions.)
+    unsafe fn execute_node_implementation_several_times<IO>(
+        &mut self,
+        nodes: &HashMap<NodeId, Node>,
+        node: NodeId,
+        io: &mut IO,
+        times: usize,
+        mut setup: impl FnMut(&mut IO, usize),
+        mut teardown: impl FnMut(&mut IO, usize),
+    ) {
+        let id = self.get_function_declaration(nodes, FunctionKind::ExternalWrapper(node));
+        let func = self.module.get_finalized_function(id);
+        let func = std::mem::transmute::<_, fn(&mut IO)>(func);
+        for time in 0..times {
+            setup(io, time);
+            func(io);
+            teardown(io, time);
+        }
+    }
+
     fn load_global_data(c: NodeDefinitionContext, ty: Type, id: DataId, output_ptr: Value) {
         let local_id = c.module.declare_data_in_func(id, c.func_builder.func);
         let ptr_type = c.module.target_config().pointer_type();
@@ -345,10 +368,16 @@ impl CodeGenerationContext {
             NodeOperation::Parameter(_) => {
                 let source_ptr = c.param_ptrs[&c.node];
                 let len = Self::node_output_layout(c.nodes, c.nodes[&c.node].input.unwrap()).len();
-                let ptr_type = c.module.target_config().pointer_type();
-                let len = c.func_builder.ins().iconst(ptr_type, len as i64);
-                c.func_builder
-                    .call_memcpy(c.module.target_config(), output_ptr, source_ptr, len);
+                c.func_builder.emit_small_memory_copy(
+                    c.module.target_config(),
+                    output_ptr,
+                    source_ptr,
+                    len as u64,
+                    1,
+                    1,
+                    true,
+                    MemFlags::new(),
+                );
             }
             NodeOperation::Basic(op) => {
                 let input = node.input.unwrap();
@@ -418,16 +447,16 @@ impl CodeGenerationContext {
                     stack_slot,
                     input_component_offset as i32,
                 );
-                let input_component_len = c
-                    .func_builder
-                    .ins()
-                    .iconst(ptr_type, input_component_len as i64);
                 assert!(input_component_offset < len);
-                c.func_builder.call_memcpy(
+                c.func_builder.emit_small_memory_copy(
                     c.module.target_config(),
                     output_ptr,
                     input_component_ptr,
-                    input_component_len,
+                    input_component_len as u64,
+                    1,
+                    1,
+                    true,
+                    MemFlags::new(),
                 );
             }
             NodeOperation::CustomNode { result, .. } => {
@@ -840,6 +869,24 @@ impl Engine {
     pub unsafe fn execute<IO>(&mut self, node: NodeId, io: &mut IO) {
         self.context
             .execute_node_implementation(&self.nodes, node, io)
+    }
+
+    pub unsafe fn execute_multiple_times<IO>(
+        &mut self,
+        node: NodeId,
+        io: &mut IO,
+        times: usize,
+        setup: impl FnMut(&mut IO, usize),
+        teardown: impl FnMut(&mut IO, usize),
+    ) {
+        self.context.execute_node_implementation_several_times(
+            &self.nodes,
+            node,
+            io,
+            times,
+            setup,
+            teardown,
+        )
     }
 
     fn add_tool(&mut self, tool: Tool) -> ToolId {

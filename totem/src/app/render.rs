@@ -99,18 +99,23 @@ impl App {
             let mut data = [[0; 4]; 360 * 360];
             let mut input_output = [0u8; 12];
             let start = Instant::now();
-            for y in 0..360 {
-                input_output[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
-                for x in 0..360 {
-                    input_output[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
-                    unsafe {
-                        self.computation_engine
-                            .execute(output_of, &mut input_output)
-                    };
-                    let value = f32::from_ne_bytes(input_output.as_chunks().0[0]);
-                    let brightness = (value.clamp(0.0, 1.0) * 255.99) as u8;
-                    data[((y * 360) + x) as usize] = [brightness, brightness, brightness, 255];
-                }
+            unsafe {
+                self.computation_engine.execute_multiple_times(
+                    output_of,
+                    &mut input_output,
+                    360 * 360,
+                    |io, time| {
+                        let x = time % 360;
+                        let y = time / 360;
+                        io[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
+                        io[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
+                    },
+                    |io, time| {
+                        let value = f32::from_ne_bytes(io.as_chunks().0[0]);
+                        let v = (value.clamp(0.0, 1.0) * 255.99) as u8;
+                        data[time] = [v, v, v, v]
+                    },
+                );
             }
             self.perf_counters.execution_time_acc += start.elapsed();
 
