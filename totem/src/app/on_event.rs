@@ -276,8 +276,8 @@ impl App {
     }
 
     fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
-        let target = self.tool_targets[0].1;
-        let target_value = self.computation_engine[target].as_literal().clone();
+        let target_id = self.tool_targets[0].1;
+        let target_value = self.computation_engine[target_id].as_literal().clone();
         let encoded_delta = self.computation_engine[self.builtins.compose_vector_2d].evaluate(
             &self.computation_engine,
             &hashmap![
@@ -293,7 +293,8 @@ impl App {
                 self.builtins.mouse_offset.0 => encoded_delta,
             ],
         );
-        let target = &mut self.computation_engine[target];
+        self.computation_engine.write_constant_data(target_id, &new_data);
+        let target = &mut self.computation_engine[target_id];
         *target.as_literal_mut() = new_data;
     }
 }
