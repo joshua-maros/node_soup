@@ -11,7 +11,7 @@ use cranelift::{
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
-use maplit::hashmap;
+use maplit::{hashmap, hashset};
 use renderer::{Position, Shapes};
 
 use crate::{
@@ -31,6 +31,7 @@ struct CodeGenerationContext {
     functions: HashMap<NodeId, FuncId>,
     constants: HashMap<NodeId, DataId>,
     undefined_functions: HashSet<NodeId>,
+    previously_defined_functions: HashSet<NodeId>,
 }
 
 struct NodeDefinitionContext<'x, 'f> {
@@ -61,7 +62,9 @@ impl<'x, 'f> NodeDefinitionContext<'x, 'f> {
 impl CodeGenerationContext {
     fn new() -> Self {
         let builder = JITBuilder::new(cranelift_module::default_libcall_names());
-        let module = JITModule::new(builder.unwrap());
+        let mut builder = builder.unwrap();
+        builder.hotswap(true);
+        let module = JITModule::new(builder);
         Self {
             builder_c: FunctionBuilderContext::new(),
             codegen_c: Context::new(),
@@ -70,6 +73,7 @@ impl CodeGenerationContext {
             functions: HashMap::new(),
             constants: HashMap::new(),
             undefined_functions: HashSet::new(),
+            previously_defined_functions: HashSet::new(),
         }
     }
 
@@ -86,7 +90,7 @@ impl CodeGenerationContext {
             let sig = Self::get_node_signature(nodes, node);
             let id = self
                 .module
-                .declare_function("", Linkage::Export, &sig)
+                .declare_function(&format!("Execute {:#?}", node), Linkage::Export, &sig)
                 .unwrap();
             self.undefined_functions.insert(node);
             id
@@ -126,16 +130,24 @@ impl CodeGenerationContext {
 
     /// Also defines all nodes this node is dependant on.
     fn define_node_implementation(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
+        let time = std::time::Instant::now();
         self.define_node_implementation_impl(nodes, node);
-        for undefined_node in std::mem::take(&mut self.undefined_functions) {
-            self.define_node_implementation_impl(nodes, undefined_node);
+        while self.undefined_functions.len() > 0 {
+            for undefined_node in std::mem::take(&mut self.undefined_functions) {
+                self.define_node_implementation_impl(nodes, undefined_node);
+            }
         }
         self.module.finalize_definitions().unwrap();
+        if time.elapsed().as_micros() > 100 {
+            println!("Compile took {:#?}", time.elapsed());
+        }
     }
 
     fn define_node_implementation_impl(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) {
         let func_id = self.get_node_declaration(nodes, node);
-        if !self.undefined_functions.contains(&node) {
+        if self.undefined_functions.contains(&node) {
+            self.undefined_functions.remove(&node);
+        } else {
             return;
         }
 
@@ -156,9 +168,17 @@ impl CodeGenerationContext {
         builder.ins().return_(&[retval]);
         builder.seal_block(root_block);
         builder.finalize();
+        if self.previously_defined_functions.contains(&node) {
+            println!("Redefining.");
+            self.module.prepare_for_function_redefine(func_id).unwrap();
+        } else {
+            println!("Noting.");
+            self.previously_defined_functions.insert(node);
+        }
         self.module
             .define_function(func_id, &mut self.codegen_c)
             .unwrap();
+        println!("Defined.");
     }
 
     fn execute_node_implementation<O>(&mut self, nodes: &HashMap<NodeId, Node>, node: NodeId) -> O {
@@ -479,6 +499,7 @@ pub type ParameterId = Id<Parameter>;
 
 pub struct Engine {
     nodes: HashMap<NodeId, Node>,
+    dirty_nodes: HashSet<NodeId>,
     root_node: NodeId,
     tools: HashMap<ToolId, Tool>,
     node_ids: IdCreator<Node>,
@@ -525,6 +546,7 @@ impl Engine {
         let context = CodeGenerationContext::new();
         let mut this = Self {
             nodes: hashmap! [root_node => start_node],
+            dirty_nodes: hashset![root_node],
             tools: hashmap![],
             root_node,
             node_ids,
@@ -696,6 +718,7 @@ impl Engine {
     pub fn push_node(&mut self, node: Node) -> NodeId {
         let id = self.node_ids.next();
         self.nodes.insert(id, node);
+        self.dirty_nodes.insert(id);
         id
     }
 
@@ -735,8 +758,6 @@ impl Engine {
 
     pub fn set_root(&mut self, node: NodeId) {
         self.root_node = node;
-        let mut root_parameters = Vec::new();
-        self[self.root_node].collect_parameters_into(self, &mut root_parameters);
     }
 
     pub fn root_node(&self) -> NodeId {
@@ -749,6 +770,25 @@ impl Engine {
 
     pub fn nodes_mut(&mut self) -> impl Iterator<Item = &mut Node> {
         self.nodes.values_mut()
+    }
+
+    pub fn mark_dirty(&mut self, node: NodeId) {
+        self.dirty_nodes.insert(node);
+        let mut other_dirty = Vec::new();
+        for (id, other) in &self.nodes {
+            if other
+                .arguments
+                .iter()
+                .chain(other.input.iter())
+                .any(|inp| *inp == node)
+            {
+                other_dirty.push(*id);
+                continue;
+            }
+        }
+        for id in other_dirty {
+            self.mark_dirty(id);
+        }
     }
 }
 

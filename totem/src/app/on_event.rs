@@ -236,6 +236,7 @@ impl App {
                     self.computation_engine
                         .write_constant_data(old_literal, &value);
                     *self.computation_engine[old_literal].as_literal_mut() = value;
+                    self.computation_engine.mark_dirty(output);
                     self.replace_references(output, old_literal);
                 }
             }
