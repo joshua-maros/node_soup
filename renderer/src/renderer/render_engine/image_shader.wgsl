@@ -29,7 +29,7 @@ var sam: sampler;
 fn vertex_shader(vert: VertexInput, image: ImageInstance) -> VertexOutput {
     var out: VertexOutput;
 
-    out.uv = vec2<f32>(vert.position.x, 1.0 - vert.position.y);
+    out.uv = vert.position.xy;
     let position = vert.position * image.size + image.position;
     let x = position.x / screen.width * 2.0 - 1.0;
     let y = position.y / screen.height * 2.0 - 1.0;

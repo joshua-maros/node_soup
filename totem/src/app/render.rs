@@ -93,7 +93,7 @@ impl App {
             for y in 0..360 {
                 input_output[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
                 for x in 0..360 {
-                    input_output[4..8].copy_from_slice(&(y as f32).to_ne_bytes());
+                    input_output[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
                     unsafe {
                         self.computation_engine
                             .execute(output_of, &mut input_output)

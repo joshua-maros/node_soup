@@ -867,7 +867,7 @@ impl Engine {
         //     arguments: vec![one, two],
         // });
         // let value = self.push_get_component(vec, "X");
-        let value = self.push_get_component(builtins.display_position.1, "X");
+        let value = self.push_get_component(builtins.display_position.1, "Y");
         let divisor = self.push_literal_node(360.0.into());
         let root = self.push_node(Node {
             operation: NodeOperation::Basic(BasicOp::Divide),
