@@ -162,6 +162,7 @@ impl App {
         let (prototype_instance, instance_bottom) = self.instantiate_prototype(prototype, after);
         self.replace_references(after, prototype_instance);
         self.computation_engine[instance_bottom.unwrap()].input = Some(after);
+        self.computation_engine.mark_dirty(instance_bottom.unwrap());
         prototype_instance
     }
 

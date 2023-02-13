@@ -619,7 +619,6 @@ pub type ParameterId = Id<Parameter>;
 
 pub struct Engine {
     nodes: HashMap<NodeId, Node>,
-    dirty_nodes: HashSet<NodeId>,
     root_node: NodeId,
     tools: HashMap<ToolId, Tool>,
     node_ids: IdCreator<Node>,
@@ -666,7 +665,6 @@ impl Engine {
         let context = CodeGenerationContext::new();
         let mut this = Self {
             nodes: hashmap! [root_node => start_node],
-            dirty_nodes: hashset![root_node],
             tools: hashmap![],
             root_node,
             node_ids,
@@ -894,7 +892,6 @@ impl Engine {
     pub fn push_node(&mut self, node: Node) -> NodeId {
         let id = self.node_ids.next();
         self.nodes.insert(id, node);
-        self.dirty_nodes.insert(id);
         id
     }
 
@@ -949,7 +946,8 @@ impl Engine {
     }
 
     pub fn mark_dirty(&mut self, node: NodeId) {
-        self.dirty_nodes.insert(node);
+        self.context.undefined_functions.insert(FunctionKind::ExternalWrapper(node));
+        self.context.undefined_functions.insert(FunctionKind::InternalImplementation(node));
         let mut other_dirty = Vec::new();
         for (id, other) in &self.nodes {
             if other
