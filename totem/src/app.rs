@@ -7,6 +7,7 @@ use renderer::{
     winit::{ControlFlow, EventLoop, PhysicalSize, Window, WindowBuilder},
     Position, RenderEngine,
 };
+use theme::PREVIEW_TEXTURE_SIZE;
 
 use crate::{
     engine::{BuiltinDefinitions, Engine, NodeId, ParameterId},
@@ -80,7 +81,10 @@ impl App {
             .build(&event_loop)
             .unwrap();
         let render_engine = RenderEngine::new_for_window(&window).await;
-        render_engine.upload_image(0, &[[255; 4]; 360 * 360]);
+        render_engine.upload_image(
+            0,
+            &[[255; 4]; (PREVIEW_TEXTURE_SIZE * PREVIEW_TEXTURE_SIZE) as usize],
+        );
         let (computation_engine, builtins) = Engine::new();
         let selected_node_path = vec![computation_engine.root_node()];
         App {

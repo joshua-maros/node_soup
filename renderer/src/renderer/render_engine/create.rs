@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use theme::PREVIEW_WIDGET_SIZE;
+use theme::{PREVIEW_WIDGET_SIZE, PREVIEW_TEXTURE_SIZE};
 use wgpu::{
     util::StagingBelt, AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry,
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
@@ -106,14 +106,13 @@ fn create_icon_texture(device: &RenderDevice) -> (BindGroupLayout, BindGroup) {
 }
 
 const NUM_IMAGES: usize = 16;
-const IMAGE_SIZE: u32 = PREVIEW_WIDGET_SIZE as u32;
 
 fn create_image_textures(
     device: &RenderDevice,
 ) -> (BindGroupLayout, [(Texture, BindGroup); NUM_IMAGES]) {
     let texture_size = Extent3d {
-        width: IMAGE_SIZE,
-        height: IMAGE_SIZE,
+        width: PREVIEW_TEXTURE_SIZE,
+        height: PREVIEW_TEXTURE_SIZE,
         ..Default::default()
     };
     let desc = BindGroupLayoutDescriptor {

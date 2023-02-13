@@ -20,6 +20,7 @@ pub const NODE_GUTTER_WIDTH: f32 = INTER_NODE_PADDING * 2.0;
 pub const INTER_PANEL_PADDING: f32 = 18.0;
 
 pub const PREVIEW_WIDGET_SIZE: f32 = 360.0;
+pub const PREVIEW_TEXTURE_SIZE: u32 = 90;
 pub const TOOL_BUTTON_SIZE: f32 = 32.0;
 pub const TOOL_ICON_SIZE: f32 = 24.0;
 pub const TOOL_BUTTON_PADDING: f32 = (TOOL_BUTTON_SIZE - TOOL_ICON_SIZE) / 2.0;
@@ -106,8 +107,3 @@ pub fn column_colors() -> [[[f32; 3]; 2]; 6] {
         column_color!(hex_color!(0xFFBE0B)),
     ]
 }
-
-// pub const INTEGER_TYPE_COLORS: [[f32; 3]; 2] = type_colors!([0.5, 1.0, 0.4]);
-// pub const FLOAT_TYPE_COLORS: [[f32; 3]; 2] = type_colors!([0.5, 0.5, 0.5]);
-// pub const STRING_TYPE_COLORS: [[f32; 3]; 2] = type_colors!([0.3, 0.5, 1.0]);
-// pub const VECTOR_TYPE_COLORS: [[f32; 3]; 2] = type_colors!([0.3, 0.0, 1.0]);

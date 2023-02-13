@@ -9,8 +9,8 @@ use renderer::{
 use theme::{
     column_colors, INTER_NODE_PADDING, INTER_PANEL_PADDING, NODE_FILL, NODE_GUTTER_WIDTH,
     NODE_ICON_PADDING, NODE_ICON_SIZE, NODE_LABEL_HEIGHT, NODE_LABEL_PADDING, NODE_OUTLINE,
-    NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_WIDGET_SIZE, TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE,
-    TOOL_ICON_SIZE,
+    NODE_PARAMETER_PADDING, NODE_WIDTH, PREVIEW_TEXTURE_SIZE, PREVIEW_WIDGET_SIZE,
+    TOOL_BUTTON_PADDING, TOOL_BUTTON_SIZE, TOOL_ICON_SIZE,
 };
 
 use super::App;
@@ -96,16 +96,16 @@ impl App {
             .iter()
             .any(|param| param.id == self.builtins.display_position.0)
         {
-            let mut data = [[0; 4]; 360 * 360];
+            let mut data = [[0; 4]; (PREVIEW_TEXTURE_SIZE * PREVIEW_TEXTURE_SIZE) as usize];
             let mut input_output = self.computation_engine.default_io_blob(output_of);
             let start = Instant::now();
             self.computation_engine.execute_multiple_times(
                 output_of,
                 &mut input_output,
-                360 * 360,
+                (PREVIEW_TEXTURE_SIZE * PREVIEW_TEXTURE_SIZE) as usize,
                 |io, time| {
-                    let x = time % 360;
-                    let y = time / 360;
+                    let x = time % PREVIEW_TEXTURE_SIZE as usize;
+                    let y = time / PREVIEW_TEXTURE_SIZE as usize;
                     unsafe {
                         io.as_raw_bytes_mut()[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
                         io.as_raw_bytes_mut()[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
