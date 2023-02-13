@@ -10,7 +10,7 @@ use renderer::{
 
 use super::App;
 use crate::{
-    engine::{Node, NodeId, NodeOperation, ParameterId, ToolId},
+    engine::{Blob, Node, NodeId, NodeOperation, ParameterId, ToolId},
     widgets::BoundingBoxKind,
 };
 
@@ -121,8 +121,9 @@ impl App {
     ) -> Result<Vec<(ParameterId, NodeId)>, ()> {
         let prototype = &self.computation_engine[prototype];
         if let &NodeOperation::Parameter(param_id) = &prototype.operation {
-            if let Some(name) = &self.computation_engine[prototype.arguments[0]]
-                .evaluate(&self.computation_engine, &hashmap![])
+            if let Ok(name) = &self.computation_engine[prototype.arguments[0]]
+                .as_literal()
+                .view()
                 .as_string()
             {
                 if name.starts_with("SPECIAL TOOL TARGET ") {
@@ -190,7 +191,8 @@ impl App {
         let prototype = &self.computation_engine[prototype_id];
         if let NodeOperation::Parameter(..) = &prototype.operation {
             let name = self.computation_engine[prototype.arguments[0]]
-                .evaluate(&self.computation_engine, &hashmap![]);
+                .as_literal()
+                .view();
             let name = name.as_string().unwrap();
             if name.starts_with("SPECIAL TOOL TARGET ") {
                 return self.instantiate_prototype(prototype.input.unwrap(), root_input);
@@ -228,8 +230,9 @@ impl App {
                 assert_eq!(self.selected_node_path.last(), Some(&node));
             } else if let Some(BoundingBoxKind::InvokeTool(..)) = self.dragging {
                 if let Some((old_literal, output)) = self.collapse_to_literal {
-                    let value = self.computation_engine[output]
-                        .evaluate(&self.computation_engine, &hashmap![]);
+                    let mut io = self.computation_engine.default_io_blob(output);
+                    self.computation_engine.execute(output, &mut io);
+                    let value = io.view().index(&Blob::from(format!("OUTPUT"))).to_owned();
                     self.computation_engine
                         .write_constant_data(old_literal, &value);
                     *self.computation_engine[old_literal].as_literal_mut() = value;
@@ -276,21 +279,22 @@ impl App {
     fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
         let target_id = self.tool_targets[0].1;
         let target_value = self.computation_engine[target_id].as_literal().clone();
-        let encoded_delta = self.computation_engine[self.builtins.compose_vector_2d].evaluate(
-            &self.computation_engine,
-            &hashmap![
-                self.builtins.x_component => d.0.into(),
-                self.builtins.y_component => d.1.into()
-            ],
-        );
+        let encoded_delta = Blob::static_heterogeneous_map(vec![
+            (format!("X").into(), d.0.into()),
+            (format!("Y").into(), d.1.into()),
+        ]);
         let tool = self.computation_engine.get_tool(tool);
-        let new_data = self.computation_engine[tool.mouse_drag_handler].evaluate(
-            &self.computation_engine,
-            &hashmap![
-                self.tool_targets[0].0 => target_value,
-                self.builtins.mouse_offset.0 => encoded_delta,
-            ],
-        );
+        let mut io = Blob::static_heterogeneous_map(vec![
+            (format!("OUTPUT").into(), target_value.clone()),
+            (
+                format!("INPUT SPECIAL TOOL TARGET Factor").into(),
+                target_value,
+            ),
+            (format!("INPUT Mouse Delta").into(), encoded_delta),
+        ]);
+        self.computation_engine
+            .execute(tool.mouse_drag_handler, &mut io);
+        let new_data = io.view().index(&format!("OUTPUT").into()).to_owned();
         self.computation_engine
             .write_constant_data(target_id, &new_data);
         let target = &mut self.computation_engine[target_id];

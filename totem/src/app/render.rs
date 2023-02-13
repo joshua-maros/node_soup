@@ -15,7 +15,7 @@ use theme::{
 
 use super::App;
 use crate::{
-    engine::{Node, NodeId, NodeOperation, Value2},
+    engine::{Blob, Node, NodeId, NodeOperation},
     widgets::{BoundingBox, BoundingBoxKind},
 };
 
@@ -84,7 +84,7 @@ impl App {
         output_of: NodeId,
     ) -> BoundingBox {
         let node = &self.computation_engine[output_of];
-        let parameters = node.collect_parameters(&self.computation_engine);
+        let parameters = node.collect_parameters(self.computation_engine.nodes());
         let mut arguments = HashMap::new();
         for param_desc in &parameters {
             arguments.insert(param_desc.id, param_desc.default.clone());
@@ -98,6 +98,7 @@ impl App {
         {
             let mut data = [[0; 4]; 360 * 360];
             let mut input_output = [0u8; 12];
+            let mut input_output = self.computation_engine.default_io_blob(output_of);
             let start = Instant::now();
             unsafe {
                 self.computation_engine.execute_multiple_times(
@@ -107,11 +108,11 @@ impl App {
                     |io, time| {
                         let x = time % 360;
                         let y = time / 360;
-                        io[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
-                        io[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
+                        io.data.bytes[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
+                        io.data.bytes[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
                     },
                     |io, time| {
-                        let value = f32::from_ne_bytes(io.as_chunks().0[0]);
+                        let value = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
                         let v = (value.clamp(0.0, 1.0) * 255.99) as u8;
                         data[time] = [v, v, v, v]
                     },
@@ -125,11 +126,11 @@ impl App {
 
             render_texture_output_preview(position, layer, 0)
         } else {
-            let mut io = [0u8; 4];
+            let mut io = self.computation_engine.default_io_blob(output_of);
             let start = Instant::now();
             unsafe { self.computation_engine.execute(output_of, &mut io) };
             self.perf_counters.execution_time_acc += start.elapsed();
-            let value: f32 = f32::from_ne_bytes(io);
+            let value: f32 = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
             render_simple_output_preview(position, layer, &value.into())
         }
     }
@@ -149,7 +150,7 @@ impl App {
             while let Some(node_id) = next_node {
                 let node = &self.computation_engine[node_id];
                 if self.selected_node_path.contains(&node_id) {
-                    let params = node.collect_parameters(&self.computation_engine);
+                    let params = node.collect_parameters(self.computation_engine.nodes());
                     for (index, arg) in node.arguments.iter().enumerate().rev() {
                         next_column_nodes.push((
                             format!("{}", node.operation.param_name(index, &params)),
@@ -216,7 +217,7 @@ impl App {
         let [fill_color, outline_color] = column_colors()[containing_editor_index];
         let bottom = y;
         if self.selected_node_path.contains(&node_id) {
-            let parameters = node.collect_parameters(&self.computation_engine);
+            let parameters = node.collect_parameters(self.computation_engine.nodes());
             for (index, _) in node.arguments.iter().enumerate().rev() {
                 let start = Position {
                     x: x + NODE_GUTTER_WIDTH + NODE_PARAMETER_PADDING,
@@ -374,11 +375,7 @@ fn render_parameter(
     BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
-fn render_simple_output_preview(
-    start: Position,
-    layer: &mut Shapes,
-    value: &Value2,
-) -> BoundingBox {
+fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &Blob) -> BoundingBox {
     let size = PREVIEW_WIDGET_SIZE;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],
@@ -391,7 +388,7 @@ fn render_simple_output_preview(
             | RIGHT_OUTLINE_FLAT,
     });
     layer.push_text(Text {
-        sections: vec![Section::big_value_text(value.display())],
+        sections: vec![Section::big_value_text(format!("{}", value.view()))],
         center: [start.x + size / 2.0, start.y + size / 2.0],
         bounds: [size, size],
         horizontal_align: HorizontalAlign::Center,
