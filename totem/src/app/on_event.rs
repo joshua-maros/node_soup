@@ -234,7 +234,7 @@ impl App {
                     self.computation_engine.execute(output, &mut io);
                     let value = io.view().index(&Blob::from(format!("OUTPUT"))).to_owned();
                     self.computation_engine
-                        .write_constant_data(old_literal, &value);
+                        .write_constant_data(old_literal, value.clone());
                     *self.computation_engine[old_literal].as_literal_mut() = value;
                     self.computation_engine.mark_dirty(output);
                     self.replace_references(output, old_literal);
@@ -296,7 +296,7 @@ impl App {
             .execute(tool.mouse_drag_handler, &mut io);
         let new_data = io.view().index(&format!("OUTPUT").into()).to_owned();
         self.computation_engine
-            .write_constant_data(target_id, &new_data);
+            .write_constant_data(target_id, new_data.clone());
         let target = &mut self.computation_engine[target_id];
         *target.as_literal_mut() = new_data;
     }

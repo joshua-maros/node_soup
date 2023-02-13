@@ -38,14 +38,14 @@ struct CodeGenerationContext {
     data_c: DataContext,
     module: JITModule,
     functions: HashMap<FunctionKind, FuncId>,
-    constants: HashMap<NodeId, DataId>,
+    constants: HashMap<NodeId, (DataId, ObjectLayout)>,
     undefined_functions: HashSet<FunctionKind>,
     previously_defined_functions: HashSet<FunctionKind>,
 }
 
 struct NodeDefinitionContext<'x, 'f> {
     func_builder: &'x mut FunctionBuilder<'f>,
-    constants: &'x mut HashMap<NodeId, DataId>,
+    constants: &'x mut HashMap<NodeId, (DataId, ObjectLayout)>,
     data_c: &'x mut DataContext,
     module: &'x mut JITModule,
     param_ptrs: &'x HashMap<NodeId, Value>,
@@ -164,36 +164,42 @@ impl CodeGenerationContext {
 
     /// Additionally defines the constant if it has not been defined.
     fn get_constant_declaration(
-        constants: &mut HashMap<NodeId, DataId>,
+        constants: &mut HashMap<NodeId, (DataId, ObjectLayout)>,
         data_c: &mut DataContext,
         module: &mut JITModule,
         node: NodeId,
-        data: &Blob,
+        data: Blob,
     ) -> DataId {
-        *constants.entry(node).or_insert_with(|| {
-            data_c.define(data.freeze().into_owned_bytes());
-            let id = module
-                .declare_data(
-                    &format!("Data For {:?}", node),
-                    Linkage::Export,
-                    true,
-                    false,
-                )
-                .unwrap();
-            module.define_data(id, data_c).unwrap();
-            data_c.clear();
-            id
-        })
+        constants
+            .entry(node)
+            .or_insert_with(|| {
+                let (layout, bytes) = data.leak();
+                data_c.define(bytes);
+                let id = module
+                    .declare_data(
+                        &format!("Data For {:?}", node),
+                        Linkage::Export,
+                        true,
+                        false,
+                    )
+                    .unwrap();
+                module.define_data(id, data_c).unwrap();
+                data_c.clear();
+                (id, layout)
+            })
+            .0
     }
 
-    fn write_constant_data(&mut self, node: NodeId, data: &Blob) {
-        let buffer_id = self.constants[&node];
-        let buffer = self.module.get_finalized_data(buffer_id);
+    fn write_constant_data(&mut self, node: NodeId, data: Blob) {
+        let (buffer_id, buffer_layout) = &self.constants[&node];
+        let buffer = self.module.get_finalized_data(*buffer_id);
         let slice = unsafe { std::slice::from_raw_parts_mut(buffer.0.cast_mut(), buffer.1) };
-        assert_eq!(slice.len(), data.layout().frozen_size() as usize);
-        let frozen = data.freeze();
-        assert_eq!(slice.len(), frozen.bytes().len());
-        slice.copy_from_slice(frozen.bytes());
+        // TODO: Fix leaked dynamic components.
+        assert_eq!(slice.len(), data.layout().size() as usize);
+        let (data_layout, bytes) = data.leak();
+        assert_eq!(slice.len(), bytes.len());
+        assert_eq!(buffer_layout, &data_layout);
+        slice.copy_from_slice(&bytes);
     }
 
     /// Also defines all nodes this node is dependant on.
@@ -242,7 +248,7 @@ impl CodeGenerationContext {
             )
         } else if let FunctionKind::ExternalWrapper(node) = function {
             let output_layout = Self::node_output_layout(nodes, node);
-            let mut offset = output_layout.frozen_size();
+            let mut offset = output_layout.size();
             let mut parameter_ptrs = HashMap::new();
             for parameter in nodes[&node]
                 .collect_parameter_nodes(node, nodes)
@@ -250,7 +256,7 @@ impl CodeGenerationContext {
                 .sorted()
             {
                 let parameter_ptr = builder.ins().iadd_imm(output_ptr, offset as i64);
-                offset += Self::node_output_layout(nodes, parameter).frozen_size();
+                offset += Self::node_output_layout(nodes, parameter).size();
                 parameter_ptrs.insert(parameter, parameter_ptr);
             }
             (node, parameter_ptrs)
@@ -336,7 +342,7 @@ impl CodeGenerationContext {
             .store(MemFlags::new(), value, output_ptr, 0);
     }
 
-    fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> DataLayout {
+    fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> ObjectLayout {
         let node = &nodes[&node];
         match &node.operation {
             NodeOperation::Literal(lit) => lit.layout().clone(),
@@ -349,21 +355,20 @@ impl CodeGenerationContext {
                     keys.push(Blob::from(label.clone()));
                     value_types.push(Self::node_output_layout(nodes, value));
                 }
-                DataLayout::FixedHeterogeneousMap(Box::new(Blob::fixed_array(keys)), value_types)
+                ObjectLayout::FixedHeterogeneousMap(Box::new(Blob::fixed_array(keys)), value_types)
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let layout = Self::node_output_layout(nodes, node.input.unwrap());
                 layout
                     .layout_after_index(Some(&Blob::from(name.clone())))
-                    .unwrap()
                     .clone()
             }
             NodeOperation::CustomNode { result, .. } => Self::node_output_layout(nodes, *result),
         }
     }
 
-    fn io_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> DataLayout {
+    fn io_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> ObjectLayout {
         let output_layout = CodeGenerationContext::node_output_layout(nodes, node);
         let mut keys = vec![(format!("OUTPUT"), output_layout)];
         let params = nodes[&node].collect_parameter_nodes(node, nodes);
@@ -380,25 +385,31 @@ impl CodeGenerationContext {
                 .collect_vec(),
         );
         let eltypes = keys.into_iter().map(|x| x.1).collect();
-        DataLayout::FixedHeterogeneousMap(Box::new(keys_blob), eltypes)
+        ObjectLayout::FixedHeterogeneousMap(Box::new(keys_blob), eltypes)
     }
 
     fn compile_node_to_instructions(mut c: NodeDefinitionContext, output_ptr: Value) {
         let node = &c.nodes[&c.node];
         match &node.operation {
             NodeOperation::Literal(value) => {
-                let data =
-                    Self::get_constant_declaration(c.constants, c.data_c, c.module, c.node, value);
+                let data = Self::get_constant_declaration(
+                    c.constants,
+                    c.data_c,
+                    c.module,
+                    c.node,
+                    value.clone(),
+                );
                 match value.layout() {
-                    DataLayout::Integer => Self::load_global_data(c, types::I32, data, output_ptr),
-                    DataLayout::Float => Self::load_global_data(c, types::F32, data, output_ptr),
+                    ObjectLayout::Integer => {
+                        Self::load_global_data(c, types::I32, data, output_ptr)
+                    }
+                    ObjectLayout::Float => Self::load_global_data(c, types::F32, data, output_ptr),
                     _ => (),
                 }
             }
             NodeOperation::Parameter(_) => {
                 let source_ptr = c.param_ptrs[&c.node];
-                let len = Self::node_output_layout(c.nodes, c.nodes[&c.node].input.unwrap())
-                    .frozen_size();
+                let len = Self::node_output_layout(c.nodes, c.nodes[&c.node].input.unwrap()).size();
                 c.func_builder.emit_small_memory_copy(
                     c.module.target_config(),
                     output_ptr,
@@ -448,15 +459,15 @@ impl CodeGenerationContext {
                 for arg in c.nodes[&c.node].arguments.clone() {
                     let offset_output = c.func_builder.ins().iadd_imm(output_ptr, offset as i64);
                     Self::compile_node_to_instructions(c.reborrow(arg), offset_output);
-                    offset += Self::node_output_layout(c.nodes, arg).frozen_size();
+                    offset += Self::node_output_layout(c.nodes, arg).size();
                 }
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let input = c.nodes[&c.node].input.unwrap();
                 let layout = Self::node_output_layout(c.nodes, input);
-                let len = layout.frozen_size();
-                let DataLayout::FixedHeterogeneousMap(keys, value_layouts) = layout else { panic!() };
+                let len = layout.size();
+                let ObjectLayout::FixedHeterogeneousMap(keys, value_layouts) = layout else { panic!() };
                 let stack_slot = c
                     .func_builder
                     .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, len));
@@ -470,10 +481,10 @@ impl CodeGenerationContext {
                 for index in 0..keys.len().unwrap() {
                     let component_layout = &value_layouts[index as usize];
                     if keys.index(&Blob::from(index as i32)) == name.view() {
-                        input_component_len = component_layout.frozen_size();
+                        input_component_len = component_layout.size();
                         break;
                     } else {
-                        input_component_offset += component_layout.frozen_size();
+                        input_component_offset += component_layout.size();
                     }
                 }
                 let input_component_ptr = c.func_builder.ins().stack_addr(
@@ -507,7 +518,7 @@ impl CodeGenerationContext {
                 let mut args = vec![output_ptr];
                 for arg in arg_nodes {
                     let layout = Self::node_output_layout(c.nodes, arg);
-                    let len = layout.frozen_size();
+                    let len = layout.size();
                     let stack_slot = c.func_builder.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
                         len,
@@ -753,7 +764,7 @@ impl Engine {
             .define_function_implementation(&self.nodes, FunctionKind::ExternalWrapper(node));
     }
 
-    pub fn write_constant_data(&mut self, node: NodeId, data: &Blob) {
+    pub fn write_constant_data(&mut self, node: NodeId, data: Blob) {
         self.context.write_constant_data(node, data);
     }
 

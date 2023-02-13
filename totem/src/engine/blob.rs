@@ -5,18 +5,18 @@ mod view;
 mod debug;
 mod index;
 mod extractors;
-mod freeze;
+mod leak_unleak;
 
 use std::fmt::{self, Debug, Formatter, Display};
 
 use self::constructors::SafetyLock;
 
-use super::DataLayout;
+use super::ObjectLayout;
 
 #[derive(Clone, PartialEq)]
 pub struct Blob {
     object: RawObject,
-    layout: DataLayout,
+    layout: ObjectLayout,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +27,7 @@ pub struct RawObject {
 
 #[derive(Clone, PartialEq)]
 pub struct BlobView<'a> {
-    layout: &'a DataLayout,
+    layout: &'a ObjectLayout,
     bytes: &'a [u8],
     dynamic_components: &'a [RawObject],
     safety_lock: SafetyLock,

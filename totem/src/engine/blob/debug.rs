@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use super::{Blob, BlobView};
-use crate::engine::DataLayout;
+use crate::engine::ObjectLayout;
 
 impl Debug for Blob {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -17,7 +17,7 @@ impl<'a> Debug for BlobView<'a> {
             write!(f, "{}", value)
         } else if let Ok(value) = self.as_string() {
             write!(f, "{}", value)
-        } else if let DataLayout::FixedIndex(len, _) = self.layout {
+        } else if let ObjectLayout::FixedIndex(len, _) = self.layout {
             write!(f, "[")?;
             for index in 0..*len {
                 <Self as Debug>::fmt(&self.index(&(index as i32).into()), f)?;

@@ -1,15 +1,15 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use super::{Blob, BlobView, DataLayout};
+use super::{Blob, BlobView, ObjectLayout};
 
 impl<'a> BlobView<'a> {
     pub fn index(&self, index: &Blob) -> Self {
         match self.layout {
-            DataLayout::Float | DataLayout::Integer | DataLayout::Byte => {
+            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => {
                 panic!("Cannot index into scalar value of type {:#?}", self.layout)
             }
-            DataLayout::FixedIndex(len, eltype) => {
-                let stride = eltype.frozen_size();
+            ObjectLayout::FixedIndex(len, eltype) => {
+                let stride = eltype.size();
                 let index: u32 = index.view().as_i32().unwrap().try_into().unwrap();
                 assert!(index < *len);
                 if eltype.is_dynamic() {
@@ -23,14 +23,14 @@ impl<'a> BlobView<'a> {
                     unsafe { Self::new(&*eltype, data, self.dynamic_components) }
                 }
             }
-            DataLayout::DynamicIndex(_) => todo!(),
-            DataLayout::FixedHeterogeneousMap(keys, eltypes) => {
+            ObjectLayout::DynamicIndex(_) => todo!(),
+            ObjectLayout::FixedHeterogeneousMap(keys, eltypes) => {
                 let index = index.view();
                 let keys = keys.view();
                 let mut offset = 0;
                 for key_index in 0..keys.len().unwrap() {
                     let eltype = &eltypes[key_index as usize];
-                    let elsize = eltype.frozen_size();
+                    let elsize = eltype.size();
                     if index == keys.index(&Blob::from(key_index as i32)) {
                         let data = &self.bytes[offset as usize..(offset + elsize) as usize];
                         // TODO: Trim children.
@@ -41,8 +41,8 @@ impl<'a> BlobView<'a> {
                 }
                 panic!("Invalid index");
             }
-            DataLayout::FixedHomogeneousMap(keys, num_keys, eltype) => todo!(),
-            DataLayout::DynamicMap(_) => todo!(),
+            ObjectLayout::FixedHomogeneousMap(keys, num_keys, eltype) => todo!(),
+            ObjectLayout::DynamicMap(_) => todo!(),
         }
     }
 }

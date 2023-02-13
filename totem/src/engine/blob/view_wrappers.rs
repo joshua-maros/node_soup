@@ -1,13 +1,8 @@
-use crate::engine::DataLayout;
-
-use super::{Blob, freeze::FrozenBlob};
+use super::Blob;
+use crate::engine::ObjectLayout;
 
 impl Blob {
-    pub fn layout(&self) -> &DataLayout {
+    pub fn layout(&self) -> &ObjectLayout {
         self.view().layout()
-    }
-
-    pub fn freeze(&self) -> FrozenBlob {
-        self.view().freeze()
     }
 }

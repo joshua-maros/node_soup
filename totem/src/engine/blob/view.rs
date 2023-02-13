@@ -1,5 +1,5 @@
 use super::{Blob, RawObject, BlobView};
-use crate::engine::DataLayout;
+use crate::engine::ObjectLayout;
 
 impl Blob {
     pub fn view(&self) -> BlobView {
@@ -22,7 +22,7 @@ impl<'a> BlobView<'a> {
         }
     }
 
-    pub fn layout(&self) -> &'a DataLayout {
+    pub fn layout(&self) -> &'a ObjectLayout {
         self.layout
     }
 
@@ -36,6 +36,6 @@ impl<'a> BlobView<'a> {
     /// How many bytes this blob contains. Dynamic data is stored as pointers to
     /// the start of the data, so they only count for 4/8 bytes each.
     pub fn frozen_size(&self) -> u32 {
-        self.layout.frozen_size()
+        self.layout.size()
     }
 }

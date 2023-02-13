@@ -1,5 +1,5 @@
 use super::{Blob, RawObject};
-use crate::engine::DataLayout;
+use crate::engine::ObjectLayout;
 
 impl From<u8> for Blob {
     fn from(value: u8) -> Self {
@@ -8,7 +8,7 @@ impl From<u8> for Blob {
                 bytes: vec![value],
                 dynamic_components: vec![],
             },
-            layout: DataLayout::Byte,
+            layout: ObjectLayout::Byte,
         }
     }
 }
@@ -20,7 +20,7 @@ impl From<i32> for Blob {
                 bytes: value.to_ne_bytes().into(),
                 dynamic_components: vec![],
             },
-            layout: DataLayout::Integer,
+            layout: ObjectLayout::Integer,
         }
     }
 }
@@ -32,7 +32,7 @@ impl From<f32> for Blob {
                 bytes: value.to_ne_bytes().into(),
                 dynamic_components: vec![],
             },
-            layout: DataLayout::Float,
+            layout: ObjectLayout::Float,
         }
     }
 }
@@ -45,7 +45,7 @@ impl From<String> for Blob {
                 bytes: value.into_bytes(),
                 dynamic_components: vec![],
             },
-            layout: DataLayout::DynamicIndex(Box::new(DataLayout::Byte)),
+            layout: ObjectLayout::DynamicIndex(Box::new(ObjectLayout::Byte)),
         }
     }
 }
