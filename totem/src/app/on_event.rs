@@ -285,12 +285,12 @@ impl App {
         ]);
         let tool = self.computation_engine.get_tool(tool);
         let mut io = Blob::static_heterogeneous_map(vec![
-            (format!("OUTPUT").into(), target_value.clone()),
+            (format!("OUTPUT").into(), 0.0.into()),
+            (format!("INPUT Mouse Offset").into(), encoded_delta.clone()),
             (
                 format!("INPUT SPECIAL TOOL TARGET Factor").into(),
                 target_value,
             ),
-            (format!("INPUT Mouse Delta").into(), encoded_delta),
         ]);
         self.computation_engine
             .execute(tool.mouse_drag_handler, &mut io);

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     ops::{Index, IndexMut},
 };
 
@@ -287,6 +287,7 @@ impl CodeGenerationContext {
         node: NodeId,
         io: &mut Blob,
     ) {
+        assert_eq!(io.layout, Self::io_layout(nodes, node));
         let id = self.get_function_declaration(nodes, FunctionKind::ExternalWrapper(node));
         let func = self.module.get_finalized_function(id);
         let func = unsafe { std::mem::transmute::<_, fn(&mut u8)>(func) };
@@ -357,8 +358,9 @@ impl CodeGenerationContext {
     fn io_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> DataLayout {
         let output_layout = CodeGenerationContext::node_output_layout(nodes, node);
         let mut keys = vec![(format!("OUTPUT"), output_layout)];
-        let params = nodes[&node].collect_parameters(nodes);
-        for param in params {
+        let params = nodes[&node].collect_parameter_nodes(node, nodes);
+        for param in params.into_iter().sorted() {
+            let param = &nodes[&param].collect_parameters(nodes)[0];
             keys.push((
                 format!("INPUT {}", param.name),
                 Self::node_output_layout(nodes, param.default),
@@ -1157,10 +1159,16 @@ impl Node {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Blob {
     pub data: BlobData,
     layout: DataLayout,
+}
+
+impl Debug for Blob {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#?}", self.view())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1331,7 +1339,7 @@ impl Blob {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct BlobView<'a> {
     layout: &'a DataLayout,
     data: &'a [u8],
@@ -1346,9 +1354,26 @@ impl<'a> Display for BlobView<'a> {
             write!(f, "{}", value)
         } else if let Ok(value) = self.as_string() {
             write!(f, "{}", value)
+        } else if let DataLayout::FixedIndex(len, _) = self.layout {
+            write!(f, "[")?;
+            for index in 0..*len {
+                <Self as Display>::fmt(&self.index(&(index as i32).into()), f)?;
+                write!(f, ", ")?;
+            }
+            write!(f, "]")
         } else {
-            write!(f, "{:#?}", self)
+            f.debug_struct("BlobView")
+                .field("layout", self.layout)
+                .field("data", &self.data)
+                .field("children", &self.children)
+                .finish()
         }
+    }
+}
+
+impl<'a> Debug for BlobView<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -1371,10 +1396,10 @@ impl<'a> BlobView<'a> {
         }
     }
 
-    pub fn as_f32(&self) -> Result<i32, ()> {
-        if let DataLayout::Integer = self.layout {
+    pub fn as_f32(&self) -> Result<f32, ()> {
+        if let DataLayout::Float = self.layout {
             debug_assert_eq!(self.data.len(), 4);
-            Ok(i32::from_ne_bytes(self.data.try_into().unwrap()))
+            Ok(f32::from_ne_bytes(self.data.try_into().unwrap()))
         } else {
             Err(())
         }

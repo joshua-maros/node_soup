@@ -97,27 +97,24 @@ impl App {
             .any(|param| param.id == self.builtins.display_position.0)
         {
             let mut data = [[0; 4]; 360 * 360];
-            let mut input_output = [0u8; 12];
             let mut input_output = self.computation_engine.default_io_blob(output_of);
             let start = Instant::now();
-            unsafe {
-                self.computation_engine.execute_multiple_times(
-                    output_of,
-                    &mut input_output,
-                    360 * 360,
-                    |io, time| {
-                        let x = time % 360;
-                        let y = time / 360;
-                        io.data.bytes[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
-                        io.data.bytes[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
-                    },
-                    |io, time| {
-                        let value = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
-                        let v = (value.clamp(0.0, 1.0) * 255.99) as u8;
-                        data[time] = [v, v, v, v]
-                    },
-                );
-            }
+            self.computation_engine.execute_multiple_times(
+                output_of,
+                &mut input_output,
+                360 * 360,
+                |io, time| {
+                    let x = time % 360;
+                    let y = time / 360;
+                    io.data.bytes[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
+                    io.data.bytes[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
+                },
+                |io, time| {
+                    let value = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
+                    let v = (value.clamp(0.0, 1.0) * 255.99) as u8;
+                    data[time] = [v, v, v, v]
+                },
+            );
             self.perf_counters.execution_time_acc += start.elapsed();
 
             let start = Instant::now();
@@ -128,7 +125,7 @@ impl App {
         } else {
             let mut io = self.computation_engine.default_io_blob(output_of);
             let start = Instant::now();
-            unsafe { self.computation_engine.execute(output_of, &mut io) };
+            self.computation_engine.execute(output_of, &mut io);
             self.perf_counters.execution_time_acc += start.elapsed();
             let value: f32 = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
             render_simple_output_preview(position, layer, &value.into())
