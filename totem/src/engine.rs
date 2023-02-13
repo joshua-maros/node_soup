@@ -357,7 +357,6 @@ impl CodeGenerationContext {
                 }
                 ObjectLayout::FixedHeterogeneousMap(Box::new(Blob::fixed_array(keys)), value_types)
             }
-            NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let layout = Self::node_output_layout(nodes, node.input.unwrap());
                 layout
@@ -462,7 +461,6 @@ impl CodeGenerationContext {
                     offset += Self::node_output_layout(c.nodes, arg).size();
                 }
             }
-            NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let input = c.nodes[&c.node].input.unwrap();
                 let layout = Self::node_output_layout(c.nodes, input);
@@ -570,50 +568,6 @@ pub struct Tool {
 }
 
 pub type ToolId = Id<Tool>;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BaseType {
-    Boolean,
-    Integer,
-    Float,
-    String,
-}
-
-impl BaseType {
-    fn rank(self) -> i32 {
-        match self {
-            BaseType::Boolean => 0,
-            BaseType::Integer => 1,
-            BaseType::Float => 2,
-            BaseType::String => 3,
-        }
-    }
-
-    pub fn max(self, other: Self) -> Self {
-        if self.rank() > other.rank() {
-            self
-        } else {
-            other
-        }
-    }
-}
-
-pub struct Type2 {
-    pub base: BaseType,
-    pub deferred_parameters: Vec<ParameterId>,
-}
-
-impl Type2 {}
-
-impl From<BaseType> for Type2 {
-    fn from(base: BaseType) -> Self {
-        Self {
-            base,
-            deferred_parameters: vec![],
-        }
-    }
-}
-
 pub type NodeId = Id<Node>;
 pub type ParameterId = Id<Parameter>;
 
@@ -1048,7 +1002,6 @@ pub enum NodeOperation {
     Parameter(ParameterId),
     Basic(BasicOp),
     ComposeStruct(String, Vec<String>),
-    ComposeColor,
     GetComponent(String),
     CustomNode {
         result: NodeId,
@@ -1064,7 +1017,6 @@ impl NodeOperation {
             Parameter(..) => format!("Parameter"),
             Basic(op) => op.name().to_owned(),
             ComposeStruct(name, ..) => format!("Make {}", name),
-            ComposeColor => format!("Compose Color"),
             GetComponent(component_name) => format!("Get {}", component_name),
             CustomNode { .. } => format!("Todo"),
         }
@@ -1093,7 +1045,6 @@ impl NodeOperation {
             Parameter(..) => vec!["Name"],
             Basic(op) => Vec::from(op.param_names()),
             ComposeStruct(_, field_names) => field_names.iter().map(|x| &x[..]).collect_vec(),
-            ComposeColor => vec!["Channel 1", "Channel 2", "Channel 3"],
             GetComponent(..) => vec![],
             CustomNode { .. } => vec!["This Label Shouldn't Show Up"],
         }
