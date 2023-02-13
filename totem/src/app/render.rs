@@ -106,11 +106,14 @@ impl App {
                 |io, time| {
                     let x = time % 360;
                     let y = time / 360;
-                    io.data.bytes[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
-                    io.data.bytes[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
+                    unsafe {
+                        io.as_raw_bytes_mut()[4..8].copy_from_slice(&(x as f32).to_ne_bytes());
+                        io.as_raw_bytes_mut()[8..12].copy_from_slice(&(y as f32).to_ne_bytes());
+                    }
                 },
                 |io, time| {
-                    let value = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
+                    let value =
+                        unsafe { f32::from_ne_bytes(io.as_raw_bytes_mut().as_chunks().0[0]) };
                     let v = (value.clamp(0.0, 1.0) * 255.99) as u8;
                     data[time] = [v, v, v, v]
                 },
@@ -127,7 +130,7 @@ impl App {
             let start = Instant::now();
             self.computation_engine.execute(output_of, &mut io);
             self.perf_counters.execution_time_acc += start.elapsed();
-            let value: f32 = f32::from_ne_bytes(io.data.bytes.as_chunks().0[0]);
+            let value = unsafe { f32::from_ne_bytes(io.as_raw_bytes_mut().as_chunks().0[0]) };
             render_simple_output_preview(position, layer, &value.into())
         }
     }
@@ -385,7 +388,7 @@ fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &Blo
             | RIGHT_OUTLINE_FLAT,
     });
     layer.push_text(Text {
-        sections: vec![Section::big_value_text(format!("{}", value.view()))],
+        sections: vec![Section::big_value_text(format!("{:?}", value))],
         center: [start.x + size / 2.0, start.y + size / 2.0],
         bounds: [size, size],
         horizontal_align: HorizontalAlign::Center,

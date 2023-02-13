@@ -1,9 +1,13 @@
+mod blob;
+mod layout;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     ops::{Index, IndexMut},
 };
 
+pub use blob::*;
 use bytemuck::Zeroable;
 use cranelift::{
     codegen::{ir::Function, Context},
@@ -12,6 +16,7 @@ use cranelift::{
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use itertools::Itertools;
+pub use layout::*;
 use maplit::{hashmap, hashset};
 use target_lexicon::Triple;
 
@@ -166,7 +171,7 @@ impl CodeGenerationContext {
         data: &Blob,
     ) -> DataId {
         *constants.entry(node).or_insert_with(|| {
-            data_c.define(data.data.bytes.clone().into_boxed_slice());
+            data_c.define(data.freeze().into_owned_bytes());
             let id = module
                 .declare_data(
                     &format!("Data For {:?}", node),
@@ -185,9 +190,10 @@ impl CodeGenerationContext {
         let buffer_id = self.constants[&node];
         let buffer = self.module.get_finalized_data(buffer_id);
         let slice = unsafe { std::slice::from_raw_parts_mut(buffer.0.cast_mut(), buffer.1) };
-        assert_eq!(slice.len(), data.layout.static_size() as usize);
-        assert_eq!(slice.len(), data.data.bytes.len());
-        slice.copy_from_slice(&data.data.bytes);
+        assert_eq!(slice.len(), data.layout().frozen_size() as usize);
+        let frozen = data.freeze();
+        assert_eq!(slice.len(), frozen.bytes().len());
+        slice.copy_from_slice(frozen.bytes());
     }
 
     /// Also defines all nodes this node is dependant on.
@@ -236,7 +242,7 @@ impl CodeGenerationContext {
             )
         } else if let FunctionKind::ExternalWrapper(node) = function {
             let output_layout = Self::node_output_layout(nodes, node);
-            let mut offset = output_layout.static_size();
+            let mut offset = output_layout.frozen_size();
             let mut parameter_ptrs = HashMap::new();
             for parameter in nodes[&node]
                 .collect_parameter_nodes(node, nodes)
@@ -244,7 +250,7 @@ impl CodeGenerationContext {
                 .sorted()
             {
                 let parameter_ptr = builder.ins().iadd_imm(output_ptr, offset as i64);
-                offset += Self::node_output_layout(nodes, parameter).static_size();
+                offset += Self::node_output_layout(nodes, parameter).frozen_size();
                 parameter_ptrs.insert(parameter, parameter_ptr);
             }
             (node, parameter_ptrs)
@@ -287,11 +293,12 @@ impl CodeGenerationContext {
         node: NodeId,
         io: &mut Blob,
     ) {
-        assert_eq!(io.layout, Self::io_layout(nodes, node));
+        assert_eq!(io.layout(), &Self::io_layout(nodes, node));
+        assert!(io.layout().is_fixed());
         let id = self.get_function_declaration(nodes, FunctionKind::ExternalWrapper(node));
         let func = self.module.get_finalized_function(id);
         let func = unsafe { std::mem::transmute::<_, fn(&mut u8)>(func) };
-        func(&mut io.data.bytes[0]);
+        func(unsafe { &mut io.as_raw_bytes_mut()[0] });
     }
 
     /// Optimized way to execute a node multiple times in a row
@@ -307,13 +314,14 @@ impl CodeGenerationContext {
         mut setup: impl FnMut(&mut Blob, usize),
         mut teardown: impl FnMut(&mut Blob, usize),
     ) {
-        assert_eq!(io.layout, Self::io_layout(nodes, node));
+        assert_eq!(io.layout(), &Self::io_layout(nodes, node));
+        assert!(io.layout().is_fixed());
         let id = self.get_function_declaration(nodes, FunctionKind::ExternalWrapper(node));
         let func = self.module.get_finalized_function(id);
         let func = unsafe { std::mem::transmute::<_, fn(&mut u8)>(func) };
         for time in 0..times {
             setup(io, time);
-            func(&mut io.data.bytes[0]);
+            func(unsafe { &mut io.as_raw_bytes_mut()[0] });
             teardown(io, time);
         }
     }
@@ -331,7 +339,7 @@ impl CodeGenerationContext {
     fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> DataLayout {
         let node = &nodes[&node];
         match &node.operation {
-            NodeOperation::Literal(lit) => lit.layout.clone(),
+            NodeOperation::Literal(lit) => lit.layout().clone(),
             NodeOperation::Parameter(_) => Self::node_output_layout(nodes, node.input.unwrap()),
             NodeOperation::Basic(_) => Self::node_output_layout(nodes, node.input.unwrap()),
             NodeOperation::ComposeStruct(_, component_names) => {
@@ -341,7 +349,7 @@ impl CodeGenerationContext {
                     keys.push(Blob::from(label.clone()));
                     value_types.push(Self::node_output_layout(nodes, value));
                 }
-                DataLayout::FixedHeterogeneousMap(Box::new(Blob::static_array(keys)), value_types)
+                DataLayout::FixedHeterogeneousMap(Box::new(Blob::fixed_array(keys)), value_types)
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
@@ -366,7 +374,7 @@ impl CodeGenerationContext {
                 Self::node_output_layout(nodes, param.default),
             ));
         }
-        let keys_blob = Blob::static_array(
+        let keys_blob = Blob::fixed_array(
             keys.iter()
                 .map(|key| Blob::from(key.0.clone()))
                 .collect_vec(),
@@ -381,7 +389,7 @@ impl CodeGenerationContext {
             NodeOperation::Literal(value) => {
                 let data =
                     Self::get_constant_declaration(c.constants, c.data_c, c.module, c.node, value);
-                match &value.layout {
+                match value.layout() {
                     DataLayout::Integer => Self::load_global_data(c, types::I32, data, output_ptr),
                     DataLayout::Float => Self::load_global_data(c, types::F32, data, output_ptr),
                     _ => (),
@@ -390,7 +398,7 @@ impl CodeGenerationContext {
             NodeOperation::Parameter(_) => {
                 let source_ptr = c.param_ptrs[&c.node];
                 let len = Self::node_output_layout(c.nodes, c.nodes[&c.node].input.unwrap())
-                    .static_size();
+                    .frozen_size();
                 c.func_builder.emit_small_memory_copy(
                     c.module.target_config(),
                     output_ptr,
@@ -440,14 +448,14 @@ impl CodeGenerationContext {
                 for arg in c.nodes[&c.node].arguments.clone() {
                     let offset_output = c.func_builder.ins().iadd_imm(output_ptr, offset as i64);
                     Self::compile_node_to_instructions(c.reborrow(arg), offset_output);
-                    offset += Self::node_output_layout(c.nodes, arg).static_size();
+                    offset += Self::node_output_layout(c.nodes, arg).frozen_size();
                 }
             }
             NodeOperation::ComposeColor => todo!(),
             NodeOperation::GetComponent(name) => {
                 let input = c.nodes[&c.node].input.unwrap();
                 let layout = Self::node_output_layout(c.nodes, input);
-                let len = layout.static_size();
+                let len = layout.frozen_size();
                 let DataLayout::FixedHeterogeneousMap(keys, value_layouts) = layout else { panic!() };
                 let stack_slot = c
                     .func_builder
@@ -462,10 +470,10 @@ impl CodeGenerationContext {
                 for index in 0..keys.len().unwrap() {
                     let component_layout = &value_layouts[index as usize];
                     if keys.index(&Blob::from(index as i32)) == name.view() {
-                        input_component_len = component_layout.static_size();
+                        input_component_len = component_layout.frozen_size();
                         break;
                     } else {
-                        input_component_offset += component_layout.static_size();
+                        input_component_offset += component_layout.frozen_size();
                     }
                 }
                 let input_component_ptr = c.func_builder.ins().stack_addr(
@@ -499,7 +507,7 @@ impl CodeGenerationContext {
                 let mut args = vec![output_ptr];
                 for arg in arg_nodes {
                     let layout = Self::node_output_layout(c.nodes, arg);
-                    let len = layout.static_size();
+                    let len = layout.frozen_size();
                     let stack_slot = c.func_builder.create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
                         len,
@@ -533,140 +541,6 @@ impl CodeGenerationContext {
             )
             .collect_vec();
         c.func_builder.ins().call(fun, &args);
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum DataLayout {
-    Float,
-    Integer,
-    Byte,
-    FixedIndex(u32, Box<DataLayout>),
-    DynamicIndex(Box<DataLayout>),
-    FixedHeterogeneousMap(Box<Blob>, Vec<DataLayout>),
-    FixedHomogeneousMap(Box<Blob>, u32, Box<DataLayout>),
-    DynamicMap(Box<DataLayout>),
-}
-
-impl DataLayout {
-    /// Returns if a value matching this layout can be resized. Does not tell
-    /// you anything about whether or not components of this value can be
-    /// resized.
-    pub fn is_dynamic(&self) -> bool {
-        match self {
-            DataLayout::Float | DataLayout::Integer | DataLayout::Byte => false,
-            DataLayout::FixedIndex(_, base) | DataLayout::FixedHomogeneousMap(_, _, base) => false,
-            DataLayout::FixedHeterogeneousMap(_, base) => false,
-            DataLayout::DynamicIndex(_) | DataLayout::DynamicMap(_) => true,
-        }
-    }
-
-    pub fn is_static(&self) -> bool {
-        !self.is_dynamic()
-    }
-
-    /// Returns the number of elements in the topmost collection this layout
-    /// describes. If you want the total size of the structure, use total_size
-    /// instead.
-    pub fn len(&self) -> Option<u32> {
-        match self {
-            DataLayout::Float | DataLayout::Integer | DataLayout::Byte => None,
-            DataLayout::FixedIndex(len, _) => Some(*len),
-            DataLayout::DynamicIndex(_) => todo!(),
-            DataLayout::FixedHeterogeneousMap(keys, _) => Some(keys.layout.len().unwrap()),
-            DataLayout::FixedHomogeneousMap(_, num_keys, _) => Some(*num_keys),
-            DataLayout::DynamicMap(_) => todo!(),
-        }
-    }
-
-    pub fn string_keys(&self) -> Option<Vec<&str>> {
-        match self {
-            DataLayout::Float
-            | DataLayout::Integer
-            | DataLayout::Byte
-            | DataLayout::FixedIndex(_, _)
-            | DataLayout::DynamicIndex(_)
-            | DataLayout::DynamicMap(_) => None,
-            DataLayout::FixedHeterogeneousMap(keys, _)
-            | DataLayout::FixedHomogeneousMap(keys, _, _) => {
-                let mut string_keys = Vec::new();
-                let keys = keys.view();
-                for index in 0..keys.layout.len().unwrap() {
-                    string_keys.push(keys.index(&(index as i32).into()).as_string().ok()?)
-                }
-                Some(string_keys)
-            }
-        }
-    }
-
-    /// How many bytes are needed to store a piece of data in this layout, where
-    /// dynamic data types are stored as native-width pointers.
-    pub fn static_size(&self) -> u32 {
-        match self {
-            DataLayout::Byte => 1,
-            DataLayout::Float | DataLayout::Integer => 4,
-            DataLayout::FixedIndex(size, eltype)
-            | DataLayout::FixedHomogeneousMap(_, size, eltype) => *size * eltype.static_size(),
-            DataLayout::FixedHeterogeneousMap(_, eltypes) => {
-                eltypes.iter().map(|eltype| eltype.static_size()).sum()
-            }
-            DataLayout::DynamicMap(eltype) | DataLayout::DynamicIndex(eltype) => {
-                std::mem::size_of::<usize>() as u32
-            }
-        }
-    }
-
-    pub fn layout_after_index(&self, fixed_index: Option<&Blob>) -> Option<&DataLayout> {
-        match self {
-            DataLayout::Float | DataLayout::Integer | DataLayout::Byte => {
-                panic!("Cannot index value of scalar type {:#?}", self)
-            }
-            DataLayout::FixedIndex(_, eltype)
-            | DataLayout::DynamicIndex(eltype)
-            | DataLayout::FixedHomogeneousMap(_, _, eltype)
-            | DataLayout::DynamicMap(eltype) => Some(&*eltype),
-            DataLayout::FixedHeterogeneousMap(keys, eltypes) => {
-                let keys = keys.view();
-                if let Some(fixed_index) = fixed_index {
-                    let fixed_index = fixed_index.view();
-                    let mut options = Vec::new();
-                    for key_index in 0..keys.len().unwrap() {
-                        let key = keys.index(&Blob::from(key_index as i32));
-                        if fixed_index == key {
-                            return Some(&eltypes[key_index as usize]);
-                        } else {
-                            options.push(key);
-                        }
-                    }
-                    panic!(
-                        "Invalid index {:#?}, options are {:#?}",
-                        fixed_index, options
-                    );
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    pub fn default_blob(&self) -> Blob {
-        match self {
-            DataLayout::Float => 0.0.into(),
-            DataLayout::Integer => 0.into(),
-            DataLayout::Byte => 0u8.into(),
-            DataLayout::FixedIndex(_, _) => todo!(),
-            DataLayout::DynamicIndex(_) => todo!(),
-            DataLayout::FixedHeterogeneousMap(keys_blob, eltypes) => {
-                let mut components = Vec::new();
-                for index in 0..keys_blob.view().len().unwrap() {
-                    let name = keys_blob.view().index(&(index as i32).into()).to_owned();
-                    components.push((name, eltypes[index as usize].default_blob()));
-                }
-                Blob::static_heterogeneous_map(components)
-            }
-            DataLayout::FixedHomogeneousMap(_, _, _) => todo!(),
-            DataLayout::DynamicMap(_) => todo!(),
-        }
     }
 }
 
@@ -1159,318 +1033,6 @@ impl Node {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub struct Blob {
-    pub data: BlobData,
-    layout: DataLayout,
-}
-
-impl Debug for Blob {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#?}", self.view())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct BlobData {
-    pub bytes: Vec<u8>,
-    children: Vec<BlobData>,
-}
-
-impl Blob {
-    pub fn view(&self) -> BlobView {
-        BlobView {
-            layout: &self.layout,
-            data: &self.data.bytes,
-            children: &self.data.children,
-        }
-    }
-
-    pub fn static_heterogeneous_map(components: Vec<(Blob, Blob)>) -> Self {
-        let len = components.len() as u32;
-        assert!(len > 0);
-        let mut keys = Vec::new();
-        let mut value_layouts = Vec::new();
-        let mut bytes = Vec::new();
-        let mut children = Vec::new();
-        for (key, mut value) in components.into_iter() {
-            keys.push(key);
-            if value.layout.is_dynamic() {
-                bytes.append(&mut vec![0; std::mem::size_of::<usize>()]);
-                children.push(value.data);
-            } else {
-                bytes.append(&mut value.data.bytes);
-                children.append(&mut value.data.children);
-            }
-            value_layouts.push(value.layout);
-        }
-        Self {
-            data: BlobData { bytes, children },
-            layout: DataLayout::FixedHeterogeneousMap(
-                Box::new(Blob::static_array(keys)),
-                value_layouts,
-            ),
-        }
-    }
-}
-
-impl<'a> BlobView<'a> {
-    pub fn to_owned(&self) -> Blob {
-        Blob {
-            data: BlobData {
-                bytes: self.data.into(),
-                children: self.children.into(),
-            },
-            layout: self.layout.clone(),
-        }
-    }
-}
-
-impl From<u8> for Blob {
-    fn from(value: u8) -> Self {
-        Self {
-            data: BlobData {
-                bytes: vec![value],
-                children: vec![],
-            },
-            layout: DataLayout::Byte,
-        }
-    }
-}
-
-impl From<i32> for Blob {
-    fn from(value: i32) -> Self {
-        Self {
-            data: BlobData {
-                bytes: value.to_ne_bytes().into(),
-                children: vec![],
-            },
-            layout: DataLayout::Integer,
-        }
-    }
-}
-
-impl From<f32> for Blob {
-    fn from(value: f32) -> Self {
-        Self {
-            data: BlobData {
-                bytes: value.to_ne_bytes().into(),
-                children: vec![],
-            },
-            layout: DataLayout::Float,
-        }
-    }
-}
-
-impl From<String> for Blob {
-    fn from(value: String) -> Self {
-        let len = value.len();
-        Self {
-            data: BlobData {
-                bytes: value.into_bytes(),
-                children: vec![],
-            },
-            layout: DataLayout::DynamicIndex(Box::new(DataLayout::Byte)),
-        }
-    }
-}
-
-impl Blob {
-    pub fn dynamic_array(values: Vec<Blob>) -> Self {
-        let len = values.len() as u32;
-        assert!(len > 0);
-        let layout = &values[0].layout;
-        for value in &values[1..] {
-            assert_eq!(&value.layout, layout);
-        }
-        if layout.is_dynamic() {
-            Self {
-                layout: DataLayout::DynamicIndex(Box::new(layout.clone())),
-                data: BlobData {
-                    bytes: vec![0; values.len() * std::mem::size_of::<usize>()],
-                    children: values.into_iter().map(|value| value.data).collect_vec(),
-                },
-            }
-        } else {
-            let mut bytes = Vec::new();
-            let mut children = Vec::new();
-            let layout = DataLayout::DynamicIndex(Box::new(layout.clone()));
-            let mut values = values;
-            for value in &mut values {
-                bytes.append(&mut value.data.bytes);
-                children.append(&mut value.data.children);
-            }
-            Self {
-                data: BlobData { bytes, children },
-                layout,
-            }
-        }
-    }
-
-    pub fn static_array(values: Vec<Blob>) -> Self {
-        let len = values.len() as u32;
-        assert!(len > 0);
-        let layout = &values[0].layout;
-        for value in &values[1..] {
-            assert_eq!(&value.layout, layout);
-        }
-        if layout.is_dynamic() {
-            Self {
-                layout: DataLayout::FixedIndex(len, Box::new(layout.clone())),
-                data: BlobData {
-                    bytes: vec![0; values.len() * std::mem::size_of::<usize>()],
-                    children: values.into_iter().map(|value| value.data).collect_vec(),
-                },
-            }
-        } else {
-            let mut bytes = Vec::new();
-            let mut children = Vec::new();
-            let layout = DataLayout::FixedIndex(len, Box::new(layout.clone()));
-            let mut values = values;
-            for value in &mut values {
-                bytes.append(&mut value.data.bytes);
-                children.append(&mut value.data.children);
-            }
-            Self {
-                data: BlobData { bytes, children },
-                layout,
-            }
-        }
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub struct BlobView<'a> {
-    layout: &'a DataLayout,
-    data: &'a [u8],
-    children: &'a [BlobData],
-}
-
-impl<'a> Display for BlobView<'a> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if let Ok(value) = self.as_i32() {
-            write!(f, "{}", value)
-        } else if let Ok(value) = self.as_f32() {
-            write!(f, "{}", value)
-        } else if let Ok(value) = self.as_string() {
-            write!(f, "{}", value)
-        } else if let DataLayout::FixedIndex(len, _) = self.layout {
-            write!(f, "[")?;
-            for index in 0..*len {
-                <Self as Display>::fmt(&self.index(&(index as i32).into()), f)?;
-                write!(f, ", ")?;
-            }
-            write!(f, "]")
-        } else {
-            f.debug_struct("BlobView")
-                .field("layout", self.layout)
-                .field("data", &self.data)
-                .field("children", &self.children)
-                .finish()
-        }
-    }
-}
-
-impl<'a> Debug for BlobView<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl<'a> BlobView<'a> {
-    /// Unsafe because this affects the safety of later data extraction methods.
-    unsafe fn select_element(&self, new_layout: &'a DataLayout, new_data: &'a [u8]) -> Self {
-        Self {
-            layout: new_layout,
-            data: new_data,
-            children: self.children,
-        }
-    }
-
-    pub fn as_i32(&self) -> Result<i32, ()> {
-        if let DataLayout::Integer = self.layout {
-            debug_assert_eq!(self.data.len(), 4);
-            Ok(i32::from_ne_bytes(self.data.try_into().unwrap()))
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn as_f32(&self) -> Result<f32, ()> {
-        if let DataLayout::Float = self.layout {
-            debug_assert_eq!(self.data.len(), 4);
-            Ok(f32::from_ne_bytes(self.data.try_into().unwrap()))
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn as_string(&self) -> Result<&'a str, ()> {
-        if &DataLayout::DynamicIndex(Box::new(DataLayout::Byte)) == self.layout {
-            debug_assert_eq!(self.children.len(), 0);
-            std::str::from_utf8(self.data).map_err(|_| ())
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn len(&self) -> Option<u32> {
-        self.layout.len()
-    }
-}
-
-impl<'a> BlobView<'a> {
-    pub fn index(&self, index: &Blob) -> Self {
-        match self.layout {
-            DataLayout::Float | DataLayout::Integer | DataLayout::Byte => {
-                panic!("Cannot index into scalar value of type {:#?}", self.layout)
-            }
-            DataLayout::FixedIndex(len, eltype) => {
-                let stride = eltype.static_size();
-                let index: u32 = index.view().as_i32().unwrap().try_into().unwrap();
-                assert!(index < *len);
-                if eltype.is_dynamic() {
-                    let child = &self.children[index as usize];
-                    Self {
-                        layout: eltype,
-                        data: &child.bytes,
-                        children: &child.children,
-                    }
-                } else {
-                    let start = index * stride;
-                    let end = start + stride;
-                    unsafe {
-                        self.select_element(&*eltype, &self.data[start as usize..end as usize])
-                    }
-                }
-            }
-            DataLayout::DynamicIndex(_) => todo!(),
-            DataLayout::FixedHeterogeneousMap(keys, eltypes) => {
-                let index = index.view();
-                let keys = keys.view();
-                let mut offset = 0;
-                for key_index in 0..keys.len().unwrap() {
-                    let eltype = &eltypes[key_index as usize];
-                    let elsize = eltype.static_size();
-                    if index == keys.index(&Blob::from(key_index as i32)) {
-                        return unsafe {
-                            self.select_element(
-                                eltype,
-                                &self.data[offset as usize..(offset + elsize) as usize],
-                            )
-                        };
-                    } else {
-                        offset += elsize;
-                    }
-                }
-                panic!("Invalid index");
-            }
-            DataLayout::FixedHomogeneousMap(keys, num_keys, eltype) => todo!(),
-            DataLayout::DynamicMap(_) => todo!(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeOperation {
     Literal(Blob),
@@ -1489,7 +1051,7 @@ impl NodeOperation {
     pub fn name(&self) -> String {
         use NodeOperation::*;
         match self {
-            Literal(value) => format!("{}", value.view()),
+            Literal(value) => format!("{:?}", value.view()),
             Parameter(..) => format!("Parameter"),
             Basic(op) => op.name().to_owned(),
             ComposeStruct(name, ..) => format!("Make {}", name),

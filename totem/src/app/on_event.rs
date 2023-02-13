@@ -279,12 +279,12 @@ impl App {
     fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
         let target_id = self.tool_targets[0].1;
         let target_value = self.computation_engine[target_id].as_literal().clone();
-        let encoded_delta = Blob::static_heterogeneous_map(vec![
+        let encoded_delta = Blob::fixed_heterogeneous_map(vec![
             (format!("X").into(), d.0.into()),
             (format!("Y").into(), d.1.into()),
         ]);
         let tool = self.computation_engine.get_tool(tool);
-        let mut io = Blob::static_heterogeneous_map(vec![
+        let mut io = Blob::fixed_heterogeneous_map(vec![
             (format!("OUTPUT").into(), 0.0.into()),
             (format!("INPUT Mouse Offset").into(), encoded_delta.clone()),
             (
