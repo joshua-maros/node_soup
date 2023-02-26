@@ -1,15 +1,15 @@
 use std::fmt::{self, Debug, Formatter};
 
-use super::{Blob, BlobView};
-use crate::engine::ObjectLayout;
+use super::{TypedBlob, TypedBlobView};
+use crate::engine::BlobLayout;
 
-impl Debug for Blob {
+impl Debug for TypedBlob {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:#?}", self.view())
     }
 }
 
-impl<'a> Debug for BlobView<'a> {
+impl<'a> Debug for TypedBlobView<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         if let Ok(value) = self.as_i32() {
             write!(f, "{}", value)
@@ -17,7 +17,7 @@ impl<'a> Debug for BlobView<'a> {
             write!(f, "{}", value)
         } else if let Ok(value) = self.as_string() {
             write!(f, "{}", value)
-        } else if let ObjectLayout::FixedIndex(len, _) = self.layout {
+        } else if let BlobLayout::FixedIndex(len, _) = self.layout {
             write!(f, "[")?;
             for index in 0..*len {
                 <Self as Debug>::fmt(&self.index(&(index as i32).into()), f)?;

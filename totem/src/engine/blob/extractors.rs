@@ -1,9 +1,9 @@
-use super::{BlobView, Blob};
-use crate::engine::ObjectLayout;
+use super::{TypedBlobView, TypedBlob};
+use crate::engine::BlobLayout;
 
-impl<'a> BlobView<'a> {
+impl<'a> TypedBlobView<'a> {
     pub fn as_i32(&self) -> Result<i32, ()> {
-        if let ObjectLayout::Integer = self.layout {
+        if let BlobLayout::Integer = self.layout {
             debug_assert_eq!(self.bytes.len(), 4);
             Ok(i32::from_ne_bytes(self.bytes.try_into().unwrap()))
         } else {
@@ -12,7 +12,7 @@ impl<'a> BlobView<'a> {
     }
 
     pub fn as_f32(&self) -> Result<f32, ()> {
-        if let ObjectLayout::Float = self.layout {
+        if let BlobLayout::Float = self.layout {
             debug_assert_eq!(self.bytes.len(), 4);
             Ok(f32::from_ne_bytes(self.bytes.try_into().unwrap()))
         } else {
@@ -21,7 +21,7 @@ impl<'a> BlobView<'a> {
     }
 
     pub fn as_string(&self) -> Result<&'a str, ()> {
-        if &ObjectLayout::DynamicIndex(Box::new(ObjectLayout::Byte)) == self.layout {
+        if &BlobLayout::DynamicIndex(Box::new(BlobLayout::Byte)) == self.layout {
             debug_assert_eq!(self.dynamic_components.len(), 0);
             std::str::from_utf8(self.bytes).map_err(|_| ())
         } else {
@@ -30,8 +30,8 @@ impl<'a> BlobView<'a> {
     }
 }
 
-impl Blob {
+impl TypedBlob {
     pub unsafe fn as_raw_bytes_mut(&mut self) -> &mut [u8] {
-        &mut self.object.bytes[..]
+        &mut self.blob.bytes[..]
     }
 }

@@ -38,14 +38,14 @@ struct CodeGenerationContext {
     data_c: DataContext,
     module: JITModule,
     functions: HashMap<FunctionKind, FuncId>,
-    constants: HashMap<NodeId, (DataId, ObjectLayout)>,
+    constants: HashMap<NodeId, (DataId, BlobLayout)>,
     undefined_functions: HashSet<FunctionKind>,
     previously_defined_functions: HashSet<FunctionKind>,
 }
 
 struct NodeDefinitionContext<'x, 'f> {
     func_builder: &'x mut FunctionBuilder<'f>,
-    constants: &'x mut HashMap<NodeId, (DataId, ObjectLayout)>,
+    constants: &'x mut HashMap<NodeId, (DataId, BlobLayout)>,
     data_c: &'x mut DataContext,
     module: &'x mut JITModule,
     param_ptrs: &'x HashMap<NodeId, Value>,
@@ -164,11 +164,11 @@ impl CodeGenerationContext {
 
     /// Additionally defines the constant if it has not been defined.
     fn get_constant_declaration(
-        constants: &mut HashMap<NodeId, (DataId, ObjectLayout)>,
+        constants: &mut HashMap<NodeId, (DataId, BlobLayout)>,
         data_c: &mut DataContext,
         module: &mut JITModule,
         node: NodeId,
-        data: Blob,
+        data: TypedBlob,
     ) -> DataId {
         constants
             .entry(node)
@@ -190,7 +190,7 @@ impl CodeGenerationContext {
             .0
     }
 
-    fn write_constant_data(&mut self, node: NodeId, data: Blob) {
+    fn write_constant_data(&mut self, node: NodeId, data: TypedBlob) {
         let (buffer_id, buffer_layout) = &self.constants[&node];
         let buffer = self.module.get_finalized_data(*buffer_id);
         let slice = unsafe { std::slice::from_raw_parts_mut(buffer.0.cast_mut(), buffer.1) };
@@ -297,7 +297,7 @@ impl CodeGenerationContext {
         &mut self,
         nodes: &HashMap<NodeId, Node>,
         node: NodeId,
-        io: &mut Blob,
+        io: &mut TypedBlob,
     ) {
         assert_eq!(io.layout(), &Self::io_layout(nodes, node));
         assert!(io.layout().is_fixed());
@@ -315,10 +315,10 @@ impl CodeGenerationContext {
         &mut self,
         nodes: &HashMap<NodeId, Node>,
         node: NodeId,
-        io: &mut Blob,
+        io: &mut TypedBlob,
         times: usize,
-        mut setup: impl FnMut(&mut Blob, usize),
-        mut teardown: impl FnMut(&mut Blob, usize),
+        mut setup: impl FnMut(&mut TypedBlob, usize),
+        mut teardown: impl FnMut(&mut TypedBlob, usize),
     ) {
         assert_eq!(io.layout(), &Self::io_layout(nodes, node));
         assert!(io.layout().is_fixed());
@@ -342,7 +342,7 @@ impl CodeGenerationContext {
             .store(MemFlags::new(), value, output_ptr, 0);
     }
 
-    fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> ObjectLayout {
+    fn node_output_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> BlobLayout {
         let node = &nodes[&node];
         match &node.operation {
             NodeOperation::Literal(lit) => lit.layout().clone(),
@@ -352,22 +352,22 @@ impl CodeGenerationContext {
                 let mut keys = Vec::new();
                 let mut value_types = Vec::new();
                 for (label, &value) in component_names.iter().zip(node.arguments.iter()) {
-                    keys.push(Blob::from(label.clone()));
+                    keys.push(TypedBlob::from(label.clone()));
                     value_types.push(Self::node_output_layout(nodes, value));
                 }
-                ObjectLayout::FixedHeterogeneousMap(Box::new(Blob::fixed_array(keys)), value_types)
+                BlobLayout::FixedHeterogeneousMap(Box::new(TypedBlob::fixed_array(keys)), value_types)
             }
             NodeOperation::GetComponent(name) => {
                 let layout = Self::node_output_layout(nodes, node.input.unwrap());
                 layout
-                    .layout_after_index(Some(&Blob::from(name.clone())))
+                    .layout_after_index(Some(&TypedBlob::from(name.clone())))
                     .clone()
             }
             NodeOperation::CustomNode { result, .. } => Self::node_output_layout(nodes, *result),
         }
     }
 
-    fn io_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> ObjectLayout {
+    fn io_layout(nodes: &HashMap<NodeId, Node>, node: NodeId) -> BlobLayout {
         let output_layout = CodeGenerationContext::node_output_layout(nodes, node);
         let mut keys = vec![(format!("OUTPUT"), output_layout)];
         let params = nodes[&node].collect_parameter_nodes(node, nodes);
@@ -378,13 +378,13 @@ impl CodeGenerationContext {
                 Self::node_output_layout(nodes, param.default),
             ));
         }
-        let keys_blob = Blob::fixed_array(
+        let keys_blob = TypedBlob::fixed_array(
             keys.iter()
-                .map(|key| Blob::from(key.0.clone()))
+                .map(|key| TypedBlob::from(key.0.clone()))
                 .collect_vec(),
         );
         let eltypes = keys.into_iter().map(|x| x.1).collect();
-        ObjectLayout::FixedHeterogeneousMap(Box::new(keys_blob), eltypes)
+        BlobLayout::FixedHeterogeneousMap(Box::new(keys_blob), eltypes)
     }
 
     fn compile_node_to_instructions(mut c: NodeDefinitionContext, output_ptr: Value) {
@@ -399,10 +399,10 @@ impl CodeGenerationContext {
                     value.clone(),
                 );
                 match value.layout() {
-                    ObjectLayout::Integer => {
+                    BlobLayout::Integer => {
                         Self::load_global_data(c, types::I32, data, output_ptr)
                     }
-                    ObjectLayout::Float => Self::load_global_data(c, types::F32, data, output_ptr),
+                    BlobLayout::Float => Self::load_global_data(c, types::F32, data, output_ptr),
                     _ => (),
                 }
             }
@@ -465,7 +465,7 @@ impl CodeGenerationContext {
                 let input = c.nodes[&c.node].input.unwrap();
                 let layout = Self::node_output_layout(c.nodes, input);
                 let len = layout.size();
-                let ObjectLayout::FixedHeterogeneousMap(keys, value_layouts) = layout else { panic!() };
+                let BlobLayout::FixedHeterogeneousMap(keys, value_layouts) = layout else { panic!() };
                 let stack_slot = c
                     .func_builder
                     .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, len));
@@ -475,10 +475,10 @@ impl CodeGenerationContext {
                 let mut input_component_offset = 0;
                 let mut input_component_len = 0;
                 let keys = keys.view();
-                let name = Blob::from(name.clone());
+                let name = TypedBlob::from(name.clone());
                 for index in 0..keys.len().unwrap() {
                     let component_layout = &value_layouts[index as usize];
-                    if keys.index(&Blob::from(index as i32)) == name.view() {
+                    if keys.index(&TypedBlob::from(index as i32)) == name.view() {
                         input_component_len = component_layout.size();
                         break;
                     } else {
@@ -716,15 +716,15 @@ impl Engine {
             .define_function_implementation(&self.nodes, FunctionKind::ExternalWrapper(node));
     }
 
-    pub fn write_constant_data(&mut self, node: NodeId, data: Blob) {
+    pub fn write_constant_data(&mut self, node: NodeId, data: TypedBlob) {
         self.context.write_constant_data(node, data);
     }
 
-    pub fn default_io_blob(&self, node: NodeId) -> Blob {
+    pub fn default_io_blob(&self, node: NodeId) -> TypedBlob {
         CodeGenerationContext::io_layout(&self.nodes, node).default_blob()
     }
 
-    pub fn execute(&mut self, node: NodeId, io: &mut Blob) {
+    pub fn execute(&mut self, node: NodeId, io: &mut TypedBlob) {
         self.compile(node);
         self.context
             .execute_node_implementation(&self.nodes, node, io)
@@ -733,10 +733,10 @@ impl Engine {
     pub fn execute_multiple_times(
         &mut self,
         node: NodeId,
-        io: &mut Blob,
+        io: &mut TypedBlob,
         times: usize,
-        setup: impl FnMut(&mut Blob, usize),
-        teardown: impl FnMut(&mut Blob, usize),
+        setup: impl FnMut(&mut TypedBlob, usize),
+        teardown: impl FnMut(&mut TypedBlob, usize),
     ) {
         self.compile(node);
         self.context.execute_node_implementation_several_times(
@@ -799,7 +799,7 @@ impl Engine {
         self.set_root(root);
     }
 
-    pub fn push_simple_struct(&mut self, name: &str, components: Vec<(&str, Blob)>) -> NodeId {
+    pub fn push_simple_struct(&mut self, name: &str, components: Vec<(&str, TypedBlob)>) -> NodeId {
         let mut args = vec![];
         for (_, component) in &components {
             args.push(self.push_literal_node(component.clone()));
@@ -818,7 +818,7 @@ impl Engine {
     pub fn push_simple_struct_composer(
         &mut self,
         name: &str,
-        default_components: Vec<(&str, Blob)>,
+        default_components: Vec<(&str, TypedBlob)>,
     ) -> (NodeId, Vec<ParameterId>) {
         let mut args = vec![];
         let mut parameters = vec![];
@@ -849,7 +849,7 @@ impl Engine {
         id
     }
 
-    pub fn push_literal_node(&mut self, value: Blob) -> NodeId {
+    pub fn push_literal_node(&mut self, value: TypedBlob) -> NodeId {
         self.push_node(Node {
             operation: NodeOperation::Literal(value),
             input: None,
@@ -865,7 +865,7 @@ impl Engine {
         })
     }
 
-    pub fn push_simple_parameter(&mut self, name: &str, default_value: Blob) -> NodeId {
+    pub fn push_simple_parameter(&mut self, name: &str, default_value: TypedBlob) -> NodeId {
         let param_name = self.push_literal_node(name.to_owned().into());
         let param_default = self.push_literal_node(default_value);
         let (_, param) = self.push_parameter(param_name, param_default);
@@ -979,7 +979,7 @@ impl Node {
         }
     }
 
-    pub fn as_literal(&self) -> &Blob {
+    pub fn as_literal(&self) -> &TypedBlob {
         if let NodeOperation::Literal(literal) = &self.operation {
             literal
         } else {
@@ -987,7 +987,7 @@ impl Node {
         }
     }
 
-    pub fn as_literal_mut(&mut self) -> &mut Blob {
+    pub fn as_literal_mut(&mut self) -> &mut TypedBlob {
         if let NodeOperation::Literal(literal) = &mut self.operation {
             literal
         } else {
@@ -998,7 +998,7 @@ impl Node {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeOperation {
-    Literal(Blob),
+    Literal(TypedBlob),
     Parameter(ParameterId),
     Basic(BasicOp),
     ComposeStruct(String, Vec<String>),

@@ -1,8 +1,8 @@
-use super::Blob;
-use crate::engine::ObjectLayout;
+use super::TypedBlob;
+use crate::engine::BlobLayout;
 
-impl Blob {
-    pub fn layout(&self) -> &ObjectLayout {
+impl TypedBlob {
+    pub fn layout(&self) -> &BlobLayout {
         self.view().layout()
     }
 }

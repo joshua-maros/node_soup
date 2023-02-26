@@ -10,7 +10,7 @@ use renderer::{
 
 use super::App;
 use crate::{
-    engine::{Blob, Node, NodeId, NodeOperation, ParameterId, ToolId},
+    engine::{TypedBlob, Node, NodeId, NodeOperation, ParameterId, ToolId},
     widgets::BoundingBoxKind,
 };
 
@@ -233,7 +233,7 @@ impl App {
                 if let Some((old_literal, output)) = self.collapse_to_literal {
                     let mut io = self.computation_engine.default_io_blob(output);
                     self.computation_engine.execute(output, &mut io);
-                    let value = io.view().index(&Blob::from(format!("OUTPUT"))).to_owned();
+                    let value = io.view().index(&TypedBlob::from(format!("OUTPUT"))).to_owned();
                     self.computation_engine
                         .write_constant_data(old_literal, value.clone());
                     *self.computation_engine[old_literal].as_literal_mut() = value;
@@ -280,12 +280,12 @@ impl App {
     fn drag_tool(&mut self, tool: ToolId, d: (f32, f32)) {
         let target_id = self.tool_targets[0].1;
         let target_value = self.computation_engine[target_id].as_literal().clone();
-        let encoded_delta = Blob::fixed_heterogeneous_map(vec![
+        let encoded_delta = TypedBlob::fixed_heterogeneous_map(vec![
             (format!("X").into(), d.0.into()),
             (format!("Y").into(), d.1.into()),
         ]);
         let tool = self.computation_engine.get_tool(tool);
-        let mut io = Blob::fixed_heterogeneous_map(vec![
+        let mut io = TypedBlob::fixed_heterogeneous_map(vec![
             (format!("OUTPUT").into(), 0.0.into()),
             (format!("INPUT Mouse Offset").into(), encoded_delta.clone()),
             (

@@ -1,10 +1,10 @@
 use itertools::Itertools;
 
-use super::{Blob, BlobView, RawObject};
-use crate::engine::ObjectLayout;
+use super::{TypedBlob, TypedBlobView, Blob};
+use crate::engine::BlobLayout;
 
-impl Blob {
-    pub fn fixed_heterogeneous_map(components: Vec<(Blob, Blob)>) -> Self {
+impl TypedBlob {
+    pub fn fixed_heterogeneous_map(components: Vec<(TypedBlob, TypedBlob)>) -> Self {
         let len = components.len() as u32;
         assert!(len > 0);
         let mut keys = Vec::new();
@@ -15,26 +15,26 @@ impl Blob {
             keys.push(key);
             if value.layout.is_dynamic() {
                 bytes.append(&mut vec![0; std::mem::size_of::<usize>()]);
-                children.push(value.object);
+                children.push(value.blob);
             } else {
-                bytes.append(&mut value.object.bytes);
-                children.append(&mut value.object.dynamic_components);
+                bytes.append(&mut value.blob.bytes);
+                children.append(&mut value.blob.dynamic_components);
             }
             value_layouts.push(value.layout);
         }
         Self {
-            object: RawObject {
+            blob: Blob {
                 bytes,
                 dynamic_components: children,
             },
-            layout: ObjectLayout::FixedHeterogeneousMap(
-                Box::new(Blob::fixed_array(keys)),
+            layout: BlobLayout::FixedHeterogeneousMap(
+                Box::new(TypedBlob::fixed_array(keys)),
                 value_layouts,
             ),
         }
     }
 
-    pub fn dynamic_array(values: Vec<Blob>) -> Self {
+    pub fn dynamic_array(values: Vec<TypedBlob>) -> Self {
         let len = values.len() as u32;
         assert!(len > 0);
         let layout = &values[0].layout;
@@ -43,23 +43,23 @@ impl Blob {
         }
         if layout.is_dynamic() {
             Self {
-                layout: ObjectLayout::DynamicIndex(Box::new(layout.clone())),
-                object: RawObject {
+                layout: BlobLayout::DynamicIndex(Box::new(layout.clone())),
+                blob: Blob {
                     bytes: vec![0; values.len() * std::mem::size_of::<usize>()],
-                    dynamic_components: values.into_iter().map(|value| value.object).collect_vec(),
+                    dynamic_components: values.into_iter().map(|value| value.blob).collect_vec(),
                 },
             }
         } else {
             let mut bytes = Vec::new();
             let mut children = Vec::new();
-            let layout = ObjectLayout::DynamicIndex(Box::new(layout.clone()));
+            let layout = BlobLayout::DynamicIndex(Box::new(layout.clone()));
             let mut values = values;
             for value in &mut values {
-                bytes.append(&mut value.object.bytes);
-                children.append(&mut value.object.dynamic_components);
+                bytes.append(&mut value.blob.bytes);
+                children.append(&mut value.blob.dynamic_components);
             }
             Self {
-                object: RawObject {
+                blob: Blob {
                     bytes,
                     dynamic_components: children,
                 },
@@ -68,7 +68,7 @@ impl Blob {
         }
     }
 
-    pub fn fixed_array(values: Vec<Blob>) -> Self {
+    pub fn fixed_array(values: Vec<TypedBlob>) -> Self {
         let len = values.len() as u32;
         assert!(len > 0);
         let layout = &values[0].layout;
@@ -77,23 +77,23 @@ impl Blob {
         }
         if layout.is_dynamic() {
             Self {
-                layout: ObjectLayout::FixedIndex(len, Box::new(layout.clone())),
-                object: RawObject {
+                layout: BlobLayout::FixedIndex(len, Box::new(layout.clone())),
+                blob: Blob {
                     bytes: vec![0; values.len() * std::mem::size_of::<usize>()],
-                    dynamic_components: values.into_iter().map(|value| value.object).collect_vec(),
+                    dynamic_components: values.into_iter().map(|value| value.blob).collect_vec(),
                 },
             }
         } else {
             let mut bytes = Vec::new();
             let mut dynamic_components = Vec::new();
-            let layout = ObjectLayout::FixedIndex(len, Box::new(layout.clone()));
+            let layout = BlobLayout::FixedIndex(len, Box::new(layout.clone()));
             let mut values = values;
             for value in &mut values {
-                bytes.append(&mut value.object.bytes);
-                dynamic_components.append(&mut value.object.dynamic_components);
+                bytes.append(&mut value.blob.bytes);
+                dynamic_components.append(&mut value.blob.dynamic_components);
             }
             Self {
-                object: RawObject {
+                blob: Blob {
                     bytes,
                     dynamic_components,
                 },
@@ -106,11 +106,11 @@ impl Blob {
 #[derive(Clone, PartialEq)]
 pub struct SafetyLock(());
 
-impl<'a> BlobView<'a> {
+impl<'a> TypedBlobView<'a> {
     pub(super) unsafe fn new(
-        layout: &'a ObjectLayout,
+        layout: &'a BlobLayout,
         bytes: &'a [u8],
-        dynamic_components: &'a [RawObject],
+        dynamic_components: &'a [Blob],
     ) -> Self {
         Self {
             layout,

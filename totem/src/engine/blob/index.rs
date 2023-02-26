@@ -1,14 +1,14 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use super::{Blob, BlobView, ObjectLayout};
+use super::{TypedBlob, TypedBlobView, BlobLayout};
 
-impl<'a> BlobView<'a> {
-    pub fn index(&self, index: &Blob) -> Self {
+impl<'a> TypedBlobView<'a> {
+    pub fn index(&self, index: &TypedBlob) -> Self {
         match self.layout {
-            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => {
+            BlobLayout::Float | BlobLayout::Integer | BlobLayout::Byte => {
                 panic!("Cannot index into scalar value of type {:#?}", self.layout)
             }
-            ObjectLayout::FixedIndex(len, eltype) => {
+            BlobLayout::FixedIndex(len, eltype) => {
                 let stride = eltype.size();
                 let index: u32 = index.view().as_i32().unwrap().try_into().unwrap();
                 assert!(index < *len);
@@ -23,15 +23,15 @@ impl<'a> BlobView<'a> {
                     unsafe { Self::new(&*eltype, data, self.dynamic_components) }
                 }
             }
-            ObjectLayout::DynamicIndex(_) => todo!(),
-            ObjectLayout::FixedHeterogeneousMap(keys, eltypes) => {
+            BlobLayout::DynamicIndex(_) => todo!(),
+            BlobLayout::FixedHeterogeneousMap(keys, eltypes) => {
                 let index = index.view();
                 let keys = keys.view();
                 let mut offset = 0;
                 for key_index in 0..keys.len().unwrap() {
                     let eltype = &eltypes[key_index as usize];
                     let elsize = eltype.size();
-                    if index == keys.index(&Blob::from(key_index as i32)) {
+                    if index == keys.index(&TypedBlob::from(key_index as i32)) {
                         let data = &self.bytes[offset as usize..(offset + elsize) as usize];
                         // TODO: Trim children.
                         return unsafe { Self::new(eltype, data, self.dynamic_components) };
@@ -41,8 +41,8 @@ impl<'a> BlobView<'a> {
                 }
                 panic!("Invalid index");
             }
-            ObjectLayout::FixedHomogeneousMap(keys, num_keys, eltype) => todo!(),
-            ObjectLayout::DynamicMap(_) => todo!(),
+            BlobLayout::FixedHomogeneousMap(keys, num_keys, eltype) => todo!(),
+            BlobLayout::DynamicMap(_) => todo!(),
         }
     }
 }

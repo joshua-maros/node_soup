@@ -1,29 +1,29 @@
-use super::Blob;
+use super::TypedBlob;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ObjectLayout {
+pub enum BlobLayout {
     Float,
     Integer,
     Byte,
-    FixedIndex(u32, Box<ObjectLayout>),
-    DynamicIndex(Box<ObjectLayout>),
-    FixedHeterogeneousMap(Box<Blob>, Vec<ObjectLayout>),
-    FixedHomogeneousMap(Box<Blob>, u32, Box<ObjectLayout>),
-    DynamicMap(Box<ObjectLayout>),
+    FixedIndex(u32, Box<BlobLayout>),
+    DynamicIndex(Box<BlobLayout>),
+    FixedHeterogeneousMap(Box<TypedBlob>, Vec<BlobLayout>),
+    FixedHomogeneousMap(Box<TypedBlob>, u32, Box<BlobLayout>),
+    DynamicMap(Box<BlobLayout>),
 }
 
-impl ObjectLayout {
+impl BlobLayout {
     /// Returns if a value matching this layout can be resized. Does not tell
     /// you anything about whether or not components of this value can be
     /// resized.
     pub fn is_dynamic(&self) -> bool {
         match self {
-            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => false,
-            ObjectLayout::FixedIndex(_, base) | ObjectLayout::FixedHomogeneousMap(_, _, base) => {
+            BlobLayout::Float | BlobLayout::Integer | BlobLayout::Byte => false,
+            BlobLayout::FixedIndex(_, base) | BlobLayout::FixedHomogeneousMap(_, _, base) => {
                 false
             }
-            ObjectLayout::FixedHeterogeneousMap(_, base) => false,
-            ObjectLayout::DynamicIndex(_) | ObjectLayout::DynamicMap(_) => true,
+            BlobLayout::FixedHeterogeneousMap(_, base) => false,
+            BlobLayout::DynamicIndex(_) | BlobLayout::DynamicMap(_) => true,
         }
     }
 
@@ -36,15 +36,15 @@ impl ObjectLayout {
     /// layout would have.
     pub fn num_dynamic_components(&self, dynamic_size: Option<u32>) -> usize {
         match self {
-            ObjectLayout::Float
-            | ObjectLayout::Integer
-            | ObjectLayout::Byte
-            | ObjectLayout::FixedIndex(..)
-            | ObjectLayout::FixedHomogeneousMap(_, _, _)
-            | ObjectLayout::FixedHeterogeneousMap(_, _) => {
+            BlobLayout::Float
+            | BlobLayout::Integer
+            | BlobLayout::Byte
+            | BlobLayout::FixedIndex(..)
+            | BlobLayout::FixedHomogeneousMap(_, _, _)
+            | BlobLayout::FixedHeterogeneousMap(_, _) => {
                 self.num_dynamic_components_when_component()
             }
-            ObjectLayout::DynamicIndex(eltype) | ObjectLayout::DynamicMap(eltype) => {
+            BlobLayout::DynamicIndex(eltype) | BlobLayout::DynamicMap(eltype) => {
                 eltype.num_dynamic_components_when_component() * dynamic_size.unwrap() as usize
             }
         }
@@ -56,17 +56,17 @@ impl ObjectLayout {
     /// num_dynamic_components instead.)
     fn num_dynamic_components_when_component(&self) -> usize {
         match self {
-            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => 0,
-            ObjectLayout::FixedIndex(len, eltype)
-            | ObjectLayout::FixedHomogeneousMap(_, len, eltype) => {
+            BlobLayout::Float | BlobLayout::Integer | BlobLayout::Byte => 0,
+            BlobLayout::FixedIndex(len, eltype)
+            | BlobLayout::FixedHomogeneousMap(_, len, eltype) => {
                 *len as usize * eltype.num_dynamic_components_when_component()
             }
-            ObjectLayout::DynamicIndex(_) => 1,
-            ObjectLayout::FixedHeterogeneousMap(_, eltypes) => eltypes
+            BlobLayout::DynamicIndex(_) => 1,
+            BlobLayout::FixedHeterogeneousMap(_, eltypes) => eltypes
                 .iter()
                 .map(|eltype| eltype.num_dynamic_components_when_component())
                 .sum(),
-            ObjectLayout::DynamicMap(_) => 1,
+            BlobLayout::DynamicMap(_) => 1,
         }
     }
 
@@ -75,25 +75,25 @@ impl ObjectLayout {
     /// instead.
     pub fn len(&self) -> Option<u32> {
         match self {
-            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => None,
-            ObjectLayout::FixedIndex(len, _) => Some(*len),
-            ObjectLayout::DynamicIndex(_) => todo!(),
-            ObjectLayout::FixedHeterogeneousMap(keys, _) => Some(keys.layout().len().unwrap()),
-            ObjectLayout::FixedHomogeneousMap(_, num_keys, _) => Some(*num_keys),
-            ObjectLayout::DynamicMap(_) => todo!(),
+            BlobLayout::Float | BlobLayout::Integer | BlobLayout::Byte => None,
+            BlobLayout::FixedIndex(len, _) => Some(*len),
+            BlobLayout::DynamicIndex(_) => todo!(),
+            BlobLayout::FixedHeterogeneousMap(keys, _) => Some(keys.layout().len().unwrap()),
+            BlobLayout::FixedHomogeneousMap(_, num_keys, _) => Some(*num_keys),
+            BlobLayout::DynamicMap(_) => todo!(),
         }
     }
 
     pub fn string_keys(&self) -> Option<Vec<&str>> {
         match self {
-            ObjectLayout::Float
-            | ObjectLayout::Integer
-            | ObjectLayout::Byte
-            | ObjectLayout::FixedIndex(_, _)
-            | ObjectLayout::DynamicIndex(_)
-            | ObjectLayout::DynamicMap(_) => None,
-            ObjectLayout::FixedHeterogeneousMap(keys, _)
-            | ObjectLayout::FixedHomogeneousMap(keys, _, _) => {
+            BlobLayout::Float
+            | BlobLayout::Integer
+            | BlobLayout::Byte
+            | BlobLayout::FixedIndex(_, _)
+            | BlobLayout::DynamicIndex(_)
+            | BlobLayout::DynamicMap(_) => None,
+            BlobLayout::FixedHeterogeneousMap(keys, _)
+            | BlobLayout::FixedHomogeneousMap(keys, _, _) => {
                 let mut string_keys = Vec::new();
                 let keys = keys.view();
                 for index in 0..keys.layout().len().unwrap() {
@@ -108,35 +108,35 @@ impl ObjectLayout {
     /// dynamic values are stored as native-width pointers.
     pub fn size(&self) -> u32 {
         match self {
-            ObjectLayout::Byte => 1,
-            ObjectLayout::Float | ObjectLayout::Integer => 4,
-            ObjectLayout::FixedIndex(size, eltype)
-            | ObjectLayout::FixedHomogeneousMap(_, size, eltype) => *size * eltype.size(),
-            ObjectLayout::FixedHeterogeneousMap(_, eltypes) => {
+            BlobLayout::Byte => 1,
+            BlobLayout::Float | BlobLayout::Integer => 4,
+            BlobLayout::FixedIndex(size, eltype)
+            | BlobLayout::FixedHomogeneousMap(_, size, eltype) => *size * eltype.size(),
+            BlobLayout::FixedHeterogeneousMap(_, eltypes) => {
                 eltypes.iter().map(|eltype| eltype.size()).sum()
             }
-            ObjectLayout::DynamicMap(eltype) | ObjectLayout::DynamicIndex(eltype) => {
+            BlobLayout::DynamicMap(eltype) | BlobLayout::DynamicIndex(eltype) => {
                 std::mem::size_of::<usize>() as u32
             }
         }
     }
 
-    pub fn layout_after_index(&self, fixed_index: Option<&Blob>) -> &ObjectLayout {
+    pub fn layout_after_index(&self, fixed_index: Option<&TypedBlob>) -> &BlobLayout {
         match self {
-            ObjectLayout::Float | ObjectLayout::Integer | ObjectLayout::Byte => {
+            BlobLayout::Float | BlobLayout::Integer | BlobLayout::Byte => {
                 panic!("Cannot index value of scalar type {:#?}", self)
             }
-            ObjectLayout::FixedIndex(_, eltype)
-            | ObjectLayout::DynamicIndex(eltype)
-            | ObjectLayout::FixedHomogeneousMap(_, _, eltype)
-            | ObjectLayout::DynamicMap(eltype) => &*eltype,
-            ObjectLayout::FixedHeterogeneousMap(keys, eltypes) => {
+            BlobLayout::FixedIndex(_, eltype)
+            | BlobLayout::DynamicIndex(eltype)
+            | BlobLayout::FixedHomogeneousMap(_, _, eltype)
+            | BlobLayout::DynamicMap(eltype) => &*eltype,
+            BlobLayout::FixedHeterogeneousMap(keys, eltypes) => {
                 let keys = keys.view();
                 let fixed_index = fixed_index.unwrap();
                 let fixed_index = fixed_index.view();
                 let mut options = Vec::new();
                 for key_index in 0..keys.len().unwrap() {
-                    let key = keys.index(&Blob::from(key_index as i32));
+                    let key = keys.index(&TypedBlob::from(key_index as i32));
                     if fixed_index == key {
                         return &eltypes[key_index as usize];
                     } else {
@@ -151,23 +151,23 @@ impl ObjectLayout {
         }
     }
 
-    pub fn default_blob(&self) -> Blob {
+    pub fn default_blob(&self) -> TypedBlob {
         match self {
-            ObjectLayout::Float => 0.0.into(),
-            ObjectLayout::Integer => 0.into(),
-            ObjectLayout::Byte => 0u8.into(),
-            ObjectLayout::FixedIndex(_, _) => todo!(),
-            ObjectLayout::DynamicIndex(_) => todo!(),
-            ObjectLayout::FixedHeterogeneousMap(keys_blob, eltypes) => {
+            BlobLayout::Float => 0.0.into(),
+            BlobLayout::Integer => 0.into(),
+            BlobLayout::Byte => 0u8.into(),
+            BlobLayout::FixedIndex(_, _) => todo!(),
+            BlobLayout::DynamicIndex(_) => todo!(),
+            BlobLayout::FixedHeterogeneousMap(keys_blob, eltypes) => {
                 let mut components = Vec::new();
                 for index in 0..keys_blob.view().len().unwrap() {
                     let name = keys_blob.view().index(&(index as i32).into()).to_owned();
                     components.push((name, eltypes[index as usize].default_blob()));
                 }
-                Blob::fixed_heterogeneous_map(components)
+                TypedBlob::fixed_heterogeneous_map(components)
             }
-            ObjectLayout::FixedHomogeneousMap(_, _, _) => todo!(),
-            ObjectLayout::DynamicMap(_) => todo!(),
+            BlobLayout::FixedHomogeneousMap(_, _, _) => todo!(),
+            BlobLayout::DynamicMap(_) => todo!(),
         }
     }
 }

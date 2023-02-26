@@ -1,20 +1,20 @@
-use super::{Blob, RawObject, BlobView};
-use crate::engine::ObjectLayout;
+use super::{TypedBlob, Blob, TypedBlobView};
+use crate::engine::BlobLayout;
 
-impl Blob {
-    pub fn view(&self) -> BlobView {
-        unsafe { BlobView::new(&self.layout, &self.object.bytes, &self.object.dynamic_components) }
+impl TypedBlob {
+    pub fn view(&self) -> TypedBlobView {
+        unsafe { TypedBlobView::new(&self.layout, &self.blob.bytes, &self.blob.dynamic_components) }
     }
 }
 
-impl<'a> BlobView<'a> {
+impl<'a> TypedBlobView<'a> {
     pub fn assert_valid(&self) {
         debug_assert_eq!(self.frozen_size() as usize, self.bytes.len());
     }
 
-    pub fn to_owned(&self) -> Blob {
-        Blob {
-            object: RawObject {
+    pub fn to_owned(&self) -> TypedBlob {
+        TypedBlob {
+            blob: Blob {
                 bytes: self.bytes.into(),
                 dynamic_components: self.dynamic_components.into(),
             },
@@ -22,7 +22,7 @@ impl<'a> BlobView<'a> {
         }
     }
 
-    pub fn layout(&self) -> &'a ObjectLayout {
+    pub fn layout(&self) -> &'a BlobLayout {
         self.layout
     }
 

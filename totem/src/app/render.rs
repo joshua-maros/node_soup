@@ -15,7 +15,7 @@ use theme::{
 
 use super::App;
 use crate::{
-    engine::{Blob, Node, NodeId, NodeOperation},
+    engine::{TypedBlob, Node, NodeId, NodeOperation},
     widgets::{BoundingBox, BoundingBoxKind},
 };
 
@@ -375,7 +375,7 @@ fn render_parameter(
     BoundingBox::new_start_size(start, Size { width, height }, kind)
 }
 
-fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &Blob) -> BoundingBox {
+fn render_simple_output_preview(start: Position, layer: &mut Shapes, value: &TypedBlob) -> BoundingBox {
     let size = PREVIEW_WIDGET_SIZE;
     layer.push_rect(RectInstance {
         position: [start.x, start.y],

@@ -11,24 +11,24 @@ use std::fmt::{self, Debug, Formatter, Display};
 
 use self::constructors::SafetyLock;
 
-use super::ObjectLayout;
+use super::BlobLayout;
 
 #[derive(Clone, PartialEq)]
-pub struct Blob {
-    object: RawObject,
-    layout: ObjectLayout,
+pub struct TypedBlob {
+    blob: Blob,
+    layout: BlobLayout,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct RawObject {
+pub struct Blob {
     bytes: Vec<u8>,
-    dynamic_components: Vec<RawObject>,
+    dynamic_components: Vec<Blob>,
 }
 
 #[derive(Clone, PartialEq)]
-pub struct BlobView<'a> {
-    layout: &'a ObjectLayout,
+pub struct TypedBlobView<'a> {
+    layout: &'a BlobLayout,
     bytes: &'a [u8],
-    dynamic_components: &'a [RawObject],
+    dynamic_components: &'a [Blob],
     safety_lock: SafetyLock,
 }
